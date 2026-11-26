@@ -30,7 +30,7 @@ export interface Notice {
   gradeId?: string;
 }
 
-export function gradeNotice(item: GradeItem, course: Course | undefined, cutoffs: GradeCutoffs, _lang?: unknown): Notice {
+export function gradeNotice(item: GradeItem, course: Course | undefined, cutoffs: GradeCutoffs): Notice {
   const name = course?.fullname ?? course?.shortname ?? '';
   const pct = Math.round(((item.score ?? 0) / item.maxScore) * 100);
   const grade = percentToGrade(pct, cutoffs);
@@ -62,7 +62,6 @@ export function absenceNotices(
   records: AttendanceRecord[],
   courses: Course[],
   defaultLimit: number,
-  _lang?: unknown,
 ): Notice[] {
   if (!prev) return [];
   const out: Notice[] = [];

@@ -56,7 +56,7 @@ export async function runCheck(opts: { silent?: boolean } = {}): Promise<void> {
     const prevAbsence = (await getItem<AbsenceSnapshot | null>(ABSENCE_KEY, null)) ?? null;
 
     const fresh = opts.silent ? [] : diffGrades(prevGrades, grades);
-    const absence = opts.silent ? [] : absenceNotices(prevAbsence, attendance, courses, settings.absenceLimit, settings.language);
+    const absence = opts.silent ? [] : absenceNotices(prevAbsence, attendance, courses, settings.absenceLimit);
 
     // Save snapshots first so a crash while notifying can't cause duplicate notifications later.
     await setItem(KEYS.gradeSnapshot, makeGradeSnapshot(grades));
@@ -68,7 +68,7 @@ export async function runCheck(opts: { silent?: boolean } = {}): Promise<void> {
       await setItem(KEYS.unseenGrades, merged);
     }
     for (const g of fresh) {
-      notify(gradeNotice(g, courses.find((c) => c.id === g.courseId), settings.gradeCutoffs, settings.language));
+      notify(gradeNotice(g, courses.find((c) => c.id === g.courseId), settings.gradeCutoffs));
     }
     for (const n of absence) notify(n);
   } catch (err) {
