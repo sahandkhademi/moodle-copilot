@@ -73,38 +73,56 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 
 > Watch the Zapier free-plan task limit: every create counts. Use mock mode while rehearsing, and switch to live Zapier for the real run.
 
-## Phase 4 — Wow features (pick by time left, in this order)
+## Phase 4 — Committed extras (must ship, all in the demo)
 
-- [ ] **4.1 Grade calculator** — "What do I need on the final to get a 2?" Uses the Austrian 1–5 scale and the course weighting
-- [ ] **4.2 Attendance guard** — warns when you're close to the absence limit ("2 more absences in Logik and you fail it")
-- [ ] **4.3 Page-aware context** — the side panel knows which Moodle page you're on: "Summarize this assignment", "What does this task actually want?"
-- [ ] **4.4 Study planner** — before an exam, Claude proposes study blocks and puts them in free slots in Google Calendar
-- [ ] **4.5 Morning briefing** — one card: today's classes, what's due, new grades, new announcements
-- [ ] **4.6 Course-material Q&A** — ask about a lecture PDF ("Explain slide 12 of week 5"); Claude reads the PDF as a document
-- [ ] **4.7 Quiz me** — generate flashcards / practice questions from course material
-- [ ] **4.8 Voice input** — mic button using the Web Speech API (great on stage)
-- [ ] **4.9 New-stuff alerts** — background check every 30 min, notification on a new grade or announcement
-- [ ] **4.10 Email the teacher** — draft a polite extension request or question in German, shown for review, never sent automatically
-- [ ] **4.11 Workload heatmap** — calendar heatmap of how busy each week is
+- [ ] **4.1 Grade calculator** — "What do I need on the final to get a 2?"
+  - Austrian scale: 1 Sehr gut, 2 Gut, 3 Befriedigend, 4 Genügend, 5 Nicht genügend. Percentage cut-offs are configurable per course (default 1 ≥ 89 %, 2 ≥ 76 %, 3 ≥ 63 %, 4 ≥ 50 %)
+  - Uses the course's grade items and weights from Moodle and does the math **in code** (a Claude tool `calculateNeededScore`), so the numbers are always right. Claude only explains the result
+  - Answers like: "You need 34/50 (68 %) on the final for a 2. A 1 is no longer possible."
+  - Small "what if" slider on the course's grade card in the dashboard
+- [ ] **4.2 Absence warning**
+  - Per course: absences so far, the limit (default 20 % of sessions, configurable), and how many absences are left
+  - Color states: 🟢 safe · 🟠 one or two absences left · 🔴 over the limit
+  - Shows up by itself: a banner at the top of the dashboard, mentioned by the chat when relevant, and a Chrome notification when a course turns 🟠
+- [ ] **4.3 Voice input**
+  - Mic button in the chat (Web Speech API, `de-AT` and `en-US`). Speak, and it sends when you stop talking. No typing
+  - Optional: read the answer aloud (`speechSynthesis`), with a toggle
+  - Fallback if the mic is blocked: the button hides itself and typing still works
+- [ ] **4.4 New-grade notifications**
+  - Background check every 15 min (`chrome.alarms`). Compare with the last saved grades
+  - New grade → Chrome notification "📊 New grade in Logik: 2 (82 %)". Clicking it opens the side panel on that grade
+  - Red dot on the toolbar icon until you've seen it
+  - Demo trigger: a hidden "simulate new grade" button in mock mode, so it fires on cue
 
-## Phase 5 — Demo polish
+## Phase 5 — Nice to have (pick by time left, in this order)
 
-- [ ] **5.1 Branding**: name, icon, color theme, dark mode
-- [ ] **5.2 Seed the mock data** for the demo story (a failed-ish logic test, an attendance warning, 3 deadlines this week)
-- [ ] **5.3 Demo script** (below) rehearsed twice, with mock mode on *and* off
-- [ ] **5.4 Backup**: screen recording of the full demo in case Wi-Fi or the API dies
-- [ ] **5.5 Pitch slides**: problem → demo → how it works → what's next
+- [ ] **5.1 Page-aware context** — the side panel knows which Moodle page you're on: "Summarize this assignment", "What does this task actually want?"
+- [ ] **5.2 Study planner** — before an exam, Claude proposes study blocks and puts them in free slots in Google Calendar
+- [ ] **5.3 Morning briefing** — one card: today's classes, what's due, new grades, new announcements
+- [ ] **5.4 Course-material Q&A** — ask about a lecture PDF ("Explain slide 12 of week 5"); Claude reads the PDF as a document
+- [ ] **5.5 Quiz me** — generate flashcards / practice questions from course material
+- [ ] **5.6 Email the teacher** — draft a polite extension request or question in German, shown for review, never sent automatically
+- [ ] **5.7 Workload heatmap** — calendar heatmap of how busy each week is
+
+## Phase 6 — Demo polish
+
+- [ ] **6.1 Branding**: name, icon, color theme, dark mode
+- [ ] **6.2 Seed the mock data** for the demo story: a so-so logic test, a final still to come, Logik at 🟠 on absences, 3 deadlines this week, one grade queued for the "new grade" notification
+- [ ] **6.3 Demo script** (below) rehearsed twice, with mock mode on *and* off
+- [ ] **6.4 Backup**: screen recording of the full demo in case Wi-Fi or the API dies
+- [ ] **6.5 Pitch slides**: problem → demo → how it works → what's next
 
 ---
 
-## Demo script (≈3 min)
+## Demo script (≈3½ min)
 
 1. **Problem (20 s)**: show the click maze — Moodle → course → grades → scroll. "Seven clicks to see one grade."
-2. **Side panel (40 s)**: open it next to Moodle. Ask *"How did I do in the last logic test?"* → answer with the grade, the class average and a link.
-3. **Follow-up (20 s)**: *"What do I need on the final to pass?"* (grade calculator)
-4. **Dashboard (40 s)**: everything due, color-coded; the attendance warning pops out.
+2. **Voice question (40 s)**: open the side panel next to Moodle, tap the mic and *say* "How did I do in the last logic test?" → answer with the grade, the class average and a link.
+3. **Grade calculator (25 s)**: say *"What do I need on the final to get a 2?"* → "34/50 (68 %)". Drag the what-if slider on the course card.
+4. **Dashboard + absence warning (40 s)**: everything due, color-coded. The 🟠 banner: "Logik: 1 absence left before you fail on attendance."
 5. **Google (40 s)**: *"Put everything due this week in my calendar and make tasks for it"* → confirmation card → one tap → switch to Google Calendar/Tasks: it's already there. No file, no setup.
-6. **Close (20 s)**: voice question or morning briefing, then what's next.
+6. **New-grade notification (20 s)**: while talking, the cued "new grade" fires: "📊 New grade in Logik". Click it → the side panel opens on it. "You don't even have to check Moodle anymore."
+7. **Close (20 s)**: what's next (page-aware help, study planner).
 
 ---
 
