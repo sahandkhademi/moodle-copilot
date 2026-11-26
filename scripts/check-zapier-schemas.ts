@@ -51,6 +51,7 @@ function makeServer() {
     created.push({ tool: req.params.name, args: req.params.arguments });
     await new Promise((r) => setTimeout(r, 1500)); // a real Zapier action takes a moment
     const found = req.params.name.includes('find');
+    if (JSON.stringify(req.params.arguments ?? {}).includes('GONE-404')) return { isError: true, content: [{ type: 'text', text: '{"error":"Not Found"}' }] };
     const kind = req.params.name.includes('calendar') ? 'ev' : 'task';
     return { content: [{ type: 'text', text: found ? JSON.stringify({ results: [] }) : JSON.stringify({ results: [{ id: `${kind}${created.length}abc`, status: 'confirmed' }] }) }] };
   });
@@ -104,9 +105,41 @@ const url = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}
   assert.match(String(del.args.eventid), /^ev\d+abc$/);
   assert.equal(del.args.calendarid, 'primary');
   assert.match(String((created.find((c) => String(c.tool).includes('tasks_delete')) as { args: Record<string, unknown> }).args.task_id), /^task\d+abc$/);
+  // --- Undo edge cases ---
+  // (a) Zapier without a task delete/update action: calendar part is removed, task part reported.
+  const noTaskUndo = tools.filter((t) => !/tasks_delete/.test(t.name));
+  const partial = await directUndo(mcp, noTaskUndo, [{ deadlineId: 'p1', entry: { calendar: true, tasks: true, calendarEventId: 'ev1abc', taskId: 'task1abc', eventTitle: 'x', taskTitle: 'y', day: '2026-11-30' } }]);
+  assert.equal(partial[0]!.calendarRemoved, true);
+  assert.equal(partial[0]!.taskRemoved, false);
+  assert.match(partial[0]!.error ?? '', /Turn on the "Google Tasks: Delete Task"/);
+  console.log('partial undo:', JSON.stringify(partial[0]));
+  // (b) an event that is already gone counts as removed.
+  const gone = await directUndo(mcp, tools, [{ deadlineId: 'g1', entry: { calendar: true, calendarEventId: 'GONE-404', eventTitle: 'x', day: '2026-11-30' } }]);
+  assert.equal(gone[0]!.ok, true);
+  console.log('already-gone undo counts as removed ✓');
   console.log('direct path check passed ✓');
   await mcp.close();
 }
+// (c) Item added before Undo existed: no ids, no titles. undoGoogle fills the titles from the deadline.
+{
+  const mem = new Map<string, string>();
+  (globalThis as any).localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
+  (globalThis as any).window = { dispatchEvent() {}, addEventListener() {}, removeEventListener() {} };
+  (globalThis as any).CustomEvent ??= class { constructor(public type: string, public init?: unknown) {} };
+  mem.set('settings', JSON.stringify({ mockMode: false, zapierMcpUrl: url }));
+  mem.set('google.synced', JSON.stringify({ old1: { calendar: true, tasks: true } }));
+  const { undoGoogle, getSynced } = await import('../src/lib/google/sync');
+  created.length = 0;
+  const item = { deadline: { id: 'old1', courseId: 1, title: 'FOB2B', type: 'assignment', due: '2026-11-30T16:00:00Z' }, course: { id: 1, shortname: 'LOG', fullname: 'VL / UE Logic', url: '' } };
+  const r = await undoGoogle(['old1'], [item as never]);
+  const del = created.find((c) => String(c.tool).includes('calendar_delete')) as { args: Record<string, unknown> };
+  console.log('old-entry undo:', JSON.stringify(r[0]), '| instructions:', String(del?.args.instructions));
+  assert.equal(r[0]!.ok, true);
+  assert.match(String(del.args.instructions), /titled "Due: FOB2B · Logic" \(or the older title "\[LOG\] FOB2B"\) on 2026-11-30/);
+  assert.deepEqual(await getSynced(), {});
+  console.log('old entries can be undone ✓');
+}
+
 if (!key) {
   console.log('No GEMINI_API_KEY: skipping live Gemini checks');
   httpServer.close();

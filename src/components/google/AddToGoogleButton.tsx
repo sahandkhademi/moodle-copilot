@@ -14,9 +14,10 @@ export function AddToGoogleButton({ item, compact = true }: { item: SyncItem; co
     ids: [id],
     alreadySynced: !!synced[id]?.calendar && !!synced[id]?.tasks,
     add: () => syncToGoogle([item], BOTH),
-    undo: undoGoogle,
+    undo: (ids) => undoGoogle(ids, [item]),
   });
   const added = t.phase === 'added';
+  const undoErr = added && t.error ? <span className="max-w-[220px] truncate text-[0.75rem] text-danger" title={t.error}>Undo failed: {t.error}</span> : null;
 
   const icon = (cls: string) =>
     t.phase === 'undoing' ? <Loader2 className={`${cls} animate-spin`} /> : added ? <CalendarCheck className={`${cls} text-success ${t.pending ? 'animate-pulse' : ''}`} /> : t.phase === 'error' ? <CalendarX className={`${cls} text-danger`} /> : <CalendarPlus className={cls} />;
@@ -29,6 +30,7 @@ export function AddToGoogleButton({ item, compact = true }: { item: SyncItem; co
         <Button variant="link" size="sm" onClick={t.undo} disabled={t.phase === 'undoing'}>
           <Undo2 className="h-3.5 w-3.5" /> Undo
         </Button>
+        {undoErr}
       </span>
     ) : (
       <Button variant="outline" size="sm" onClick={t.add} title={title}>
@@ -55,6 +57,7 @@ export function AddToGoogleButton({ item, compact = true }: { item: SyncItem; co
           Undo
         </button>
       )}
+      {undoErr && <span className="ml-1.5">{undoErr}</span>}
     </span>
   );
 }
@@ -67,7 +70,7 @@ export function SyncAllButton({ items }: { items: SyncItem[] }) {
     ids,
     alreadySynced: items.length > 0 && pending.length === 0,
     add: () => syncToGoogle(pending.length ? pending : items, BOTH),
-    undo: undoGoogle,
+    undo: (ids) => undoGoogle(ids, items),
   });
   if (!items.length) return null;
   if (t.phase === 'added' || t.phase === 'undoing') {
@@ -79,6 +82,7 @@ export function SyncAllButton({ items }: { items: SyncItem[] }) {
         <Button variant="link" size="sm" onClick={t.undo} busy={t.phase === 'undoing'}>
           {t.phase !== 'undoing' && <Undo2 className="h-3.5 w-3.5" />} Undo
         </Button>
+        {t.error && <span className="max-w-[220px] truncate text-[0.75rem] text-danger" title={t.error}>Undo failed: {t.error}</span>}
       </span>
     );
   }

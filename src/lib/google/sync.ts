@@ -34,13 +34,18 @@ export interface SyncedEntry {
   /** For Undo when no id came back: Zapier finds the item by title + day. */
   eventTitle?: string;
   taskTitle?: string;
+  /** Title format used before Undo existed ("[LOG] FOB2B"), so those older items can be found too. */
+  legacyTitle?: string;
   day?: string;
 }
 export type SyncedMap = Record<string, SyncedEntry>;
 
 export interface UndoResult {
   deadlineId: string;
+  /** Everything that was added for this deadline is gone now. */
   ok: boolean;
+  calendarRemoved?: boolean;
+  taskRemoved?: boolean;
   error?: string;
 }
 
@@ -140,13 +145,31 @@ async function markSynced(results: SyncResult[], items: SyncItem[]) {
   await setItem(KEYS.googleSynced, map);
 }
 
-/** Removes what Copilot added to Google for these deadlines (event and/or task). Never throws. */
-export async function undoGoogle(deadlineIds: string[]): Promise<UndoResult[]> {
-  const viaBg = await delegate<UndoResult[]>({ type: 'google-undo', deadlineIds });
+/**
+ * Removes what Copilot added to Google for these deadlines (event and/or task). Never throws.
+ * `items` lets older entries (added before ids/titles were stored) still be found by title + day.
+ */
+export async function undoGoogle(deadlineIds: string[], items: SyncItem[] = []): Promise<UndoResult[]> {
+  const viaBg = await delegate<UndoResult[]>({ type: 'google-undo', deadlineIds, items });
   if (viaBg) return viaBg;
   try {
     const map = await getSynced();
-    const entries = deadlineIds.filter((id) => map[id]).map((id) => ({ deadlineId: id, entry: map[id]! }));
+    const entries = deadlineIds
+      .filter((id) => map[id])
+      .map((id) => {
+        const e = map[id]!;
+        const item = items.find((i) => i.deadline.id === id);
+        const filled: SyncedEntry = item
+          ? {
+              ...e,
+              eventTitle: e.eventTitle ?? eventTitle(item),
+              taskTitle: e.taskTitle ?? taskTitle(item),
+              legacyTitle: e.eventTitle ? undefined : item.course?.shortname ? `[${item.course.shortname}] ${item.deadline.title}` : item.deadline.title,
+              day: e.day ?? viennaLocal(new Date(item.deadline.due)).slice(0, 10),
+            }
+          : e;
+        return { deadlineId: id, entry: filled };
+      });
     const { mockMode } = await getSettings();
     let results: UndoResult[];
     if (mockMode) {
@@ -158,8 +181,19 @@ export async function undoGoogle(deadlineIds: string[]): Promise<UndoResult[]> {
         new Promise<UndoResult[]>((resolve) => setTimeout(() => resolve(entries.map((e) => ({ deadlineId: e.deadlineId, ok: false, error: 'Undo timed out. Try again.' }))), 60_000)),
       ]);
     }
+    // Partial success counts: remove what is gone, keep the rest so the next Undo only retries that part.
     const fresh = await getSynced();
-    for (const r of results) if (r.ok) delete fresh[r.deadlineId];
+    for (const r of results) {
+      const e = fresh[r.deadlineId];
+      if (!e) continue;
+      if (r.ok) {
+        delete fresh[r.deadlineId];
+        continue;
+      }
+      if (r.calendarRemoved) Object.assign(e, { calendar: false, calendarEventId: undefined });
+      if (r.taskRemoved) Object.assign(e, { tasks: false, taskId: undefined });
+      if (!e.calendar && !e.tasks) delete fresh[r.deadlineId];
+    }
     await setItem(KEYS.googleSynced, fresh);
     // Ids that were never synced count as undone.
     const known = new Set(entries.map((e) => e.deadlineId));

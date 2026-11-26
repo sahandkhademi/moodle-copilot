@@ -75,7 +75,7 @@ function UndoLink({ onClick, busy }: { onClick: () => void; busy: boolean }) {
 
 /** Calendar icon next to a Timeline item: one click adds (tick shows instantly), Undo is always there afterwards. */
 export function TimelineGoogleButton({ item, alreadySynced }: { item: SyncItem; alreadySynced: boolean }) {
-  const t = useGoogleToggle({ ids: [item.deadline.id], alreadySynced, add: () => syncViaBackground([item], BOTH), undo: undoViaBackground });
+  const t = useGoogleToggle({ ids: [item.deadline.id], alreadySynced, add: () => syncViaBackground([item], BOTH), undo: (ids) => undoViaBackground(ids, [item]) });
   const added = t.phase === 'added' || t.phase === 'undoing';
   const title = t.phase === 'error' ? `Couldn't add to Google: ${t.error} (click to retry)` : added ? (t.pending ? 'Adding to Google…' : 'In Google Calendar and Tasks') : 'Add to Google Calendar and Tasks';
   const Icon = t.phase === 'undoing' ? Loader2 : added ? CalendarCheck : t.phase === 'error' ? CalendarX : CalendarPlus;
@@ -86,13 +86,23 @@ export function TimelineGoogleButton({ item, alreadySynced }: { item: SyncItem; 
         <Icon size={18} className={t.phase === 'undoing' ? 'copilot-spin' : t.pending ? 'copilot-pulse' : undefined} />
       </button>
       {added && <UndoLink onClick={t.undo} busy={t.phase === 'undoing'} />}
+      {added && t.error && <UndoError text={t.error} />}
     </span>
+  );
+}
+
+/** Why Undo didn't work, visible right next to the button (full text on hover). */
+function UndoError({ text }: { text: string }) {
+  return (
+    <small className="text-danger ms-2 text-truncate d-inline-block" style={{ maxWidth: 280, verticalAlign: 'middle' }} title={text}>
+      Undo failed: {text}
+    </small>
   );
 }
 
 export function TimelineSyncAll({ items, syncedCount }: { items: SyncItem[]; syncedCount: number }) {
   const todo = items.length - syncedCount;
-  const t = useGoogleToggle({ ids: items.map((i) => i.deadline.id), alreadySynced: items.length > 0 && todo <= 0, add: () => syncViaBackground(items, BOTH), undo: undoViaBackground });
+  const t = useGoogleToggle({ ids: items.map((i) => i.deadline.id), alreadySynced: items.length > 0 && todo <= 0, add: () => syncViaBackground(items, BOTH), undo: (ids) => undoViaBackground(ids, items) });
   if (!items.length) return null;
   const btn = { gap: 6, color: '#1d2125', borderColor: '#8f959e' };
   if (t.phase === 'added' || t.phase === 'undoing') {
@@ -100,6 +110,7 @@ export function TimelineSyncAll({ items, syncedCount }: { items: SyncItem[]; syn
       <span className="d-inline-flex align-items-center small" style={{ gap: 6, color: '#357a32' }}>
         <CalendarCheck size={14} className={t.pending ? 'copilot-pulse' : undefined} /> {items.length} in Google
         <UndoLink onClick={t.undo} busy={t.phase === 'undoing'} />
+        {t.error && <UndoError text={t.error} />}
       </span>
     );
   }

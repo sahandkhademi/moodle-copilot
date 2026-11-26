@@ -168,13 +168,14 @@ function undoArgs(tool: McpToolInfo, kind: 'event' | 'task' | 'complete', e: Syn
     if (k && v != null && v !== '') args[k] = v;
   };
   const id = kind === 'event' ? e.calendarEventId : e.taskId;
-  const title = kind === 'event' ? e.eventTitle : e.taskTitle;
+  const main = kind === 'event' ? e.eventTitle : e.taskTitle;
+  const title = e.legacyTitle && !id ? `${main}" (or the older title "${e.legacyTitle}")` : `${main}"`;
   const what =
     kind === 'event'
-      ? `Delete the Google Calendar event ${id ? `with id ${id}` : ''} titled "${title}" on ${e.day} from the primary calendar.`
+      ? `Delete the Google Calendar event ${id ? `with id ${id}` : ''} titled "${title} on ${e.day} from the primary calendar.`
       : kind === 'task'
-        ? `Delete the Google Task ${id ? `with id ${id}` : ''} titled "${title}" (due ${e.day}) from the default list.`
-        : `Mark the Google Task ${id ? `with id ${id}` : ''} titled "${title}" (due ${e.day}) as completed.`;
+        ? `Delete the Google Task ${id ? `with id ${id}` : ''} titled "${title} (due ${e.day}) from the default list.`
+        : `Mark the Google Task ${id ? `with id ${id}` : ''} titled "${title} (due ${e.day}) as completed.`;
   set(field(p, /^instructions$/i), what.replace(/\s+/g, ' '));
   set(field(p, /^(event_?id|eventid)$/i, /event.*id/i, kind === 'event' ? /^id$/i : /^$/), kind === 'event' ? id : undefined);
   set(field(p, /^(task_?id|taskid)$/i, /^task$/i, kind !== 'event' ? /^id$/i : /^$/), kind !== 'event' ? id : undefined);
@@ -183,20 +184,34 @@ function undoArgs(tool: McpToolInfo, kind: 'event' | 'task' | 'complete', e: Syn
   return args;
 }
 
-/** Removes the event and/or task of each entry, all in parallel. */
+/** A delete that fails because the item no longer exists counts as removed. */
+const GONE = /not\s*found|404|410|resource has been deleted|already deleted|does not exist|no (such )?(event|task)/i;
+
+/** Removes the event and/or task of each entry, all in parallel. Reports each part separately. */
 export async function directUndo(mcp: Client, tools: McpToolInfo[], entries: { deadlineId: string; entry: SyncedEntry }[]): Promise<UndoResult[]> {
   const { calendar, tasks, tasksComplete } = pickUndoTools(tools);
+  const run = async (job: Promise<{ ok: boolean; error?: string }>) => {
+    const r = await job;
+    return r.ok || GONE.test(r.error ?? '') ? { ok: true } : r;
+  };
   return Promise.all(
     entries.map(async ({ deadlineId, entry }): Promise<UndoResult> => {
-      const jobs: Promise<{ ok: boolean; error?: string }>[] = [];
-      if (entry.calendar) jobs.push(calendar ? call(mcp, calendar, undoArgs(calendar, 'event', entry)) : Promise.resolve({ ok: false, error: 'Enable the "Google Calendar: Delete Event" action in Zapier to undo.' }));
-      if (entry.tasks) {
-        const t = tasks ?? tasksComplete;
-        jobs.push(t ? call(mcp, t, undoArgs(t, tasks ? 'task' : 'complete', entry)) : Promise.resolve({ ok: false, error: 'Enable "Google Tasks: Delete Task" (or "Update Task") in Zapier to undo.' }));
-      }
-      const rs = await Promise.all(jobs);
-      const bad = rs.find((r) => !r.ok);
-      return bad ? { deadlineId, ok: false, error: bad.error } : { deadlineId, ok: true };
+      const [cal, tsk] = await Promise.all([
+        entry.calendar
+          ? calendar
+            ? run(call(mcp, calendar, undoArgs(calendar, 'event', entry)))
+            : Promise.resolve({ ok: false, error: 'Turn on the "Google Calendar: Delete Event" action in Zapier to undo.' })
+          : null,
+        entry.tasks
+          ? tasks ?? tasksComplete
+            ? run(call(mcp, (tasks ?? tasksComplete)!, undoArgs((tasks ?? tasksComplete)!, tasks ? 'task' : 'complete', entry)))
+            : Promise.resolve({ ok: false, error: 'Turn on the "Google Tasks: Delete Task" (or "Update Task") action in Zapier to undo.' })
+          : null,
+      ]);
+      const calendarRemoved = !entry.calendar || !!cal?.ok;
+      const taskRemoved = !entry.tasks || !!tsk?.ok;
+      const error = [cal && !cal.ok ? cal.error : '', tsk && !tsk.ok ? tsk.error : ''].filter(Boolean).join(' · ') || undefined;
+      return { deadlineId, ok: calendarRemoved && taskRemoved, calendarRemoved, taskRemoved, error };
     }),
   );
 }

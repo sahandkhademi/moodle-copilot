@@ -70,7 +70,7 @@ export function ConfirmGoogleSync({ items, defaultOptions = { calendar: true, ta
   const undo = async () => {
     const ids = [...results.values()].filter((r) => !failedResult(r)).map((r) => r.deadlineId);
     setPhase('undoing');
-    const rs = await undoGoogle(ids);
+    const rs = await undoGoogle(ids, chosen);
     const bad = rs.find((r) => !r.ok);
     if (bad) {
       setUndoError(bad.error ?? "Couldn't undo");

@@ -91,7 +91,7 @@ export default defineBackground(() => {
         return true;
       }
       if (m?.type === 'google-undo') {
-        undoGoogle(m.deadlineIds).then(sendResponse, (e) => sendResponse(m.deadlineIds.map((id) => ({ deadlineId: id, ok: false, error: String(e) }))));
+        undoGoogle(m.deadlineIds, m.items ?? []).then(sendResponse, (e) => sendResponse(m.deadlineIds.map((id) => ({ deadlineId: id, ok: false, error: String(e) }))));
         return true;
       }
       if (m?.type === 'google-prewarm') {

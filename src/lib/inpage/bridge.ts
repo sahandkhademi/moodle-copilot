@@ -3,7 +3,7 @@ import type { SyncItem, SyncOptions, SyncResult, UndoResult } from '../google/sy
 
 export type BridgeMessage =
   | { type: 'google-sync'; items: SyncItem[]; opts: SyncOptions }
-  | { type: 'google-undo'; deadlineIds: string[] }
+  | { type: 'google-undo'; deadlineIds: string[]; items?: SyncItem[] }
   | { type: 'google-prewarm' }
   | { type: 'open-panel'; prompt?: string };
 
@@ -24,12 +24,12 @@ export async function openAssistant(prompt?: string): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'open-panel', prompt } satisfies BridgeMessage).catch(() => {});
 }
 
-export async function undoViaBackground(deadlineIds: string[]): Promise<UndoResult[]> {
+export async function undoViaBackground(deadlineIds: string[], items: SyncItem[] = []): Promise<UndoResult[]> {
   if (!hasRuntime()) {
     await new Promise((r) => setTimeout(r, 300));
     return deadlineIds.map((id) => ({ deadlineId: id, ok: true }));
   }
-  return chrome.runtime.sendMessage({ type: 'google-undo', deadlineIds } satisfies BridgeMessage);
+  return chrome.runtime.sendMessage({ type: 'google-undo', deadlineIds, items } satisfies BridgeMessage);
 }
 
 /** Opens the Zapier connection in the background ahead of the first click. */
