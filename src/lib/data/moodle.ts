@@ -33,12 +33,19 @@ export function createMoodleSource(rawBaseUrl: string): DataSource {
   const getDeadlines = (): Promise<Deadline[]> =>
     client.cached('deadlines', async () => {
       const now = Math.floor(Date.now() / 1000);
-      const data = await client.callAjax<{ events: never[] }>('core_calendar_get_action_events_by_timesort', {
-        timesortfrom: now - 7 * DAY,
-        timesortto: now + 60 * DAY,
-        limitnum: 50,
-      });
-      return parseDeadlines(data, baseUrl);
+      // Moodle returns at most 50 per call (JKU has many Zoom events), so page with aftereventid.
+      const events: { id: number }[] = [];
+      for (let page = 0; page < 4; page++) {
+        const data = await client.callAjax<{ events: { id: number }[] }>('core_calendar_get_action_events_by_timesort', {
+          timesortfrom: now - 7 * DAY,
+          timesortto: now + 60 * DAY,
+          limitnum: 50,
+          ...(events.length ? { aftereventid: events[events.length - 1]!.id } : {}),
+        });
+        events.push(...(data?.events ?? []));
+        if ((data?.events ?? []).length < 50) break;
+      }
+      return parseDeadlines({ events: events as never[] }, baseUrl);
     });
 
   const gradesOfCourse = (courseId: number): Promise<GradeItem[]> =>

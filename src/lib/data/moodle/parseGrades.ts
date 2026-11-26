@@ -20,13 +20,16 @@ export function kindFromName(name: string): GradeItemKind {
   return 'other';
 }
 
-/** Normalizes weights to sum 1. Missing (NaN) weights get the mean of the known ones, or an even share if none are known. */
+/**
+ * Normalizes weights to sum 1. Missing (NaN) weights get the mean of the known ones.
+ * If no weight is known at all (JKU shows "-"), weight by max points, like Moodle's default "Natural" aggregation.
+ */
 export function normalizeWeights(items: GradeItem[]): GradeItem[] {
   if (!items.length) return items;
   const ok = (w: number) => Number.isFinite(w) && w >= 0;
   const known = items.filter((i) => ok(i.weight) && i.weight > 0);
   const fallback = known.length ? known.reduce((s, i) => s + i.weight, 0) / known.length : 1;
-  const raw = items.map((i) => (known.length && ok(i.weight) ? i.weight : fallback));
+  const raw = items.map((i) => (known.length ? (ok(i.weight) ? i.weight : fallback) : Math.max(i.maxScore, 0)));
   const sum = raw.reduce((s, w) => s + w, 0) || 1;
   return items.map((i, idx) => ({ ...i, weight: raw[idx]! / sum }));
 }
@@ -67,7 +70,8 @@ export function parseGradeReportHtml(html: string, courseId: number, baseUrl: st
     const kind = kindFrom(name, modMatch);
     const feedback = cellText(row, 'feedback');
     const item: GradeItem = {
-      id: `mdl-g-${courseId}-${row.id || ++n}`,
+      // JKU puts the stable row id on the <th> (row_<itemid>_<userid>); a counter would shift when items are added.
+      id: `mdl-g-${courseId}-${row.id || th.id || `n${++n}`}`,
       courseId,
       name,
       kind,

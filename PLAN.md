@@ -42,7 +42,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 - [x] **1.1 Scaffold**: WXT + React + TS + Tailwind; side panel opens from the toolbar icon; loads unpacked in `chrome://extensions`
 - [x] **1.2 Settings page**: Moodle base URL, Gemini API key, mock-mode toggle
 - [x] **1.3 Mock data layer**: `src/data/mock.ts` with ~5 courses (incl. *Logik*), grades, attendance, 10+ deadlines spread over the next 3 weeks. Same TypeScript interface as the real layer
-- [ ] **1.4 Moodle spike** (time-box 45 min): on the real Moodle, confirm which calls work with the session:
+- [x] **1.4 Moodle spike** (time-box 45 min): on the real Moodle, confirm which calls work with the session:
   - `core_course_get_enrolled_courses_by_timeline_classification` → courses
   - `core_calendar_get_action_events_by_timesort` → deadlines
   - grades → AJAX if allowed, else scrape `grade/report/user/index.php?id=…`
@@ -134,11 +134,13 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 - Before demo day, tag the known-good state: `git tag demo-ready`
 - Secrets (API keys, OAuth client secrets, `.pem` files) never go into git. `.gitignore` already covers them
 
-## Spike notes (fill in during 1.4)
+## Spike notes (1.4, checked against moodle.jku.at on 2026-11-26)
+
+JKU runs Moodle 4.x with theme `boost_union_jku`, English UI. Login is SSO; a guest session also has a sesskey (user id 1), so we check the user id.
 
 | Data | Works via | Notes |
 |---|---|---|
-| Courses | ? | |
-| Deadlines | ? | |
-| Grades | ? | |
-| Attendance | ? | |
+| Courses | AJAX `core_course_get_enrolled_courses_by_timeline_classification` ✓ | Full names look like `338.001/…, VL / UE Logic, <teacher> et al., 2026W` → we split out title + teacher and build short labels (LOG, CTAI, …) |
+| Deadlines | AJAX `core_calendar_get_action_events_by_timesort` ✓ | Max 50 per call → paged with `aftereventid`. Many Zoom events (`modulename: zoom`) → shown as meetings. `actionable: false` ≠ submitted |
+| Grades | HTML `grade/report/user/index.php?id=` ✓ (AJAX `gradereport_user_get_grade_items` is disabled: `servicenotavailable`) | Nested categories with `baggt` subtotal rows (skipped). "Calculated weight" is `-` → weight by max points (Moodle "Natural"). Stable ids from `th#row_<item>_<user>` |
+| Attendance | HTML `mod/attendance/view.php?id=<cmid>&view=5` ✓ (only some courses use it; `core_course_get_contents` is disabled) | Dates like `Tue 13 Oct 2026 1:45PM`; absences counted from the session rows (`td.statuscol`) |

@@ -2,7 +2,7 @@
 // 1. Preferred: run fetch inside an open Moodle tab (same origin, cookie + M.cfg.sesskey).
 // 2. Fallback: fetch from the extension page with credentials: 'include' and read the sesskey from /my/.
 import { MoodleAuthError } from './errors';
-import { looksLikeLoginPage, parseSesskey, parseUserId } from './parseAjax';
+import { isRealUser, looksLikeLoginPage, parseSesskey, parseUserId } from './parseAjax';
 
 export interface FetchResult {
   status: number;
@@ -54,14 +54,14 @@ async function tabSession(tabId: number): Promise<MoodleSession | null> {
     const [info] = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: pageInfo });
     const { sesskey, userId } = info?.result ?? { sesskey: null, userId: null };
     if (!sesskey) return null; // not a Moodle page (error page, still loading)
-    if (!userId) throw new MoodleAuthError();
+    if (!isRealUser(userId)) throw new MoodleAuthError(); // not logged in, or browsing as guest
     return {
       sesskey,
       userId,
       via: 'tab',
       async fetchText(url, init) {
         const [res] = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: pageFetch, args: [url, init ?? null] });
-        if (!res?.result) throw new Error('Moodle-Tab hat nicht geantwortet');
+        if (!res?.result) throw new Error('The Moodle tab did not respond');
         return res.result;
       },
     };
@@ -76,12 +76,13 @@ async function extensionSession(baseUrl: string): Promise<MoodleSession> {
   try {
     res = await extensionFetch(`${baseUrl}/my/`);
   } catch (e) {
-    throw new Error(`Moodle nicht erreichbar (${baseUrl}): ${e instanceof Error ? e.message : e}`);
+    throw new Error(`Can't reach Moodle (${baseUrl}): ${e instanceof Error ? e.message : e}`);
   }
   if (looksLikeLoginPage(res.url, res.text)) throw new MoodleAuthError();
   const sesskey = parseSesskey(res.text);
-  if (!sesskey) throw new MoodleAuthError('Kein Moodle-Sesskey gefunden. Bitte in Moodle einloggen');
-  return { sesskey, userId: parseUserId(res.text), via: 'extension', fetchText: extensionFetch };
+  const userId = parseUserId(res.text);
+  if (!sesskey || !isRealUser(userId)) throw new MoodleAuthError(); // no session, or guest
+  return { sesskey, userId, via: 'extension', fetchText: extensionFetch };
 }
 
 export async function openSession(baseUrl: string): Promise<MoodleSession> {

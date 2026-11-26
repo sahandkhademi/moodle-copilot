@@ -14,14 +14,23 @@ export function statusFromText(t: string): SessionStatus | null {
   return null;
 }
 
-function parseDate(t: string): string | null {
+const MONTHS: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, mär: 2, apr: 3, may: 4, mai: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, okt: 9, nov: 10, dec: 11, dez: 11,
+};
+
+/** "13.10.2026", "Tue 13 Oct 2026 1:45PM - 3:15PM" (JKU, English UI) or "Di 13 Okt 2026 …" → ISO date (noon UTC). */
+export function parseSessionDate(t: string): string | null {
   const de = t.match(/(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{2,4})/);
   if (de) {
     const y = de[3]!.length === 2 ? 2000 + Number(de[3]) : Number(de[3]);
     return new Date(Date.UTC(y, Number(de[2]) - 1, Number(de[1]), 12)).toISOString();
   }
-  const d = new Date(t.replace(/\(.*\)/, '').trim());
-  return isNaN(d.getTime()) || !/\d{4}/.test(t) ? null : d.toISOString();
+  const named = t.match(/(\d{1,2})\.?\s+([A-Za-zäÄ]{3})[a-zä]*\.?\s+(\d{4})/);
+  if (named) {
+    const m = MONTHS[named[2]!.toLowerCase()];
+    if (m != null) return new Date(Date.UTC(Number(named[3]), m, Number(named[1]), 12)).toISOString();
+  }
+  return null;
 }
 
 const TAKEN = /erfasste termine|taken sessions|sessions taken/i;
@@ -36,7 +45,7 @@ export function parseAttendanceHtml(html: string, courseId: number, url?: string
   for (const row of Array.from(doc.querySelectorAll('table tr'))) {
     const cells = Array.from(row.querySelectorAll('td'));
     if (cells.length < 3) continue;
-    const date = parseDate(clean(cells[0]!.textContent));
+    const date = parseSessionDate(clean((row.querySelector('td.datecol') ?? cells[0]!).textContent));
     if (!date) continue;
     sessionRows++;
     const status = statusFromText(clean((row.querySelector("td.statuscol") ?? cells[2]!).textContent));
