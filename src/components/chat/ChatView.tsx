@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { ConfirmGoogleSync } from '@/components/google/ConfirmGoogleSync';
 import { Block, Button, cx, inputClass } from '@/components/ui/moodle';
-import { classifyError, Conversation, friendlyError } from '@/lib/ai/chat';
+import { classifyError, Conversation, friendlyError, prewarm } from '@/lib/ai/chat';
 import { TOOL_HINTS, type ToolHintIcon, type ToolName } from '@/lib/ai/tools';
 import type { SyncItem, SyncOptions, SyncResult } from '@/lib/google/sync';
 import { useSettings } from '@/lib/settings';
@@ -158,6 +158,11 @@ export default function ChatView({ focus, onNavigate }: { focus: FocusRequest | 
     onInterim: (txt) => setInput(txt),
     onFinal: (txt) => sendRef.current(txt),
   });
+
+  // Load the data snapshot as soon as the chat opens, so the first question doesn't wait for it.
+  useEffect(() => {
+    if (hasKey) prewarm();
+  }, [hasKey]);
 
   // focus.chatPrompt: send automatically, once per focus.at
   useEffect(() => {

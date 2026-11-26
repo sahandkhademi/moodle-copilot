@@ -56,14 +56,33 @@ if (!key) {
   const { GoogleGenAI } = await import('@google/genai');
   const { Conversation, friendlyError } = await import('../src/lib/ai/chat');
   try {
-    const conv = await Conversation.create(new GoogleGenAI({ apiKey: key }));
-    for (const q of ['How did I do in my last Logic test?', 'What do I need on the final for a 2?']) {
+    const pin = process.env.BENCH_MODEL;
+    const fresh = () => Conversation.create(new GoogleGenAI({ apiKey: key }), { model: pin });
+    const ask = async (conv: Awaited<ReturnType<typeof fresh>>, q: string) => {
       console.log(`\n>>> ${q}`);
-      const text = await conv.send(q, { onToolStart: (n) => console.log('[tool]', n), onText: (t) => process.stdout.write(t) });
-      console.log('\n(length', text.length + ')');
+      const tools: string[] = [];
+      let card = false;
+      const text = await conv.send(q, {
+        onToolStart: (n) => (console.log('[tool]', n), tools.push(n)),
+        onToolResult: (n, out) => n === 'propose_google_sync' && out.syncProposal && (card = true),
+        onText: (t) => process.stdout.write(t),
+      });
+      console.log(`\n(length ${text.length}, model ${conv.model}, tools: ${tools.join(',') || 'none'})`);
       check(`live answer non-empty: ${q}`, text.trim().length > 0);
-      if (/final for a 2/.test(q)) check('live answer mentions 85', /85/.test(text));
-    }
+      return { text, tools, card };
+    };
+    // One multi-turn conversation (history + system instruction refresh must keep working)
+    const conv = await fresh();
+    const t1 = await ask(conv, 'How did I do in my last Logic test?');
+    check('live: Logic test answer says grade 4 and 62%', /\b4\b/.test(t1.text) && /62/.test(t1.text));
+    const t2 = await ask(conv, 'What do I need on the final for a 2?');
+    check('live: "for a 2" says 85%', /85\s*%/.test(t2.text));
+    check('live: "for a 2" says 42.5 of 50', /42\.5/.test(t2.text) && /50/.test(t2.text));
+    // Fresh conversations for the other demo questions
+    const abs = await ask(await fresh(), 'Am I at risk anywhere because of absences?');
+    check('live: absence answer mentions Logic with 1 absence left', /logic/i.test(abs.text) && /\b(1|one)\b/i.test(abs.text));
+    const cal = await ask(await fresh(), 'Put everything due this week in my calendar');
+    check('live: calendar request calls propose_google_sync and produces the card', cal.tools.includes('propose_google_sync') && cal.card);
   } catch (e) {
     console.log('\nLIVE ERROR:', (e as Error).message.slice(0, 400));
     console.log('friendly:', friendlyError(e));

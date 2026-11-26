@@ -1,11 +1,12 @@
 // Streaming chat engine on Gemini (@google/genai chats API). UI-agnostic so it can also run from node scripts.
 // The SDK chat object keeps the history (incl. Gemini thought signatures needed for multi-turn function calling).
 import type { Chat, Content, FunctionResponse, GenerateContentConfig, GoogleGenAI, Part } from '@google/genai';
-import { FIRST_CHUNK_TIMEOUT_MS, FORCE_TOOLS_MODELS, GEMINI_MODELS, getGemini, isRetriableModelError } from './client';
+import { FIRST_CHUNK_TIMEOUT_MS, FORCE_TOOLS_MODELS, GEMINI_MODELS, getGemini, isRetriableModelError, noteThinkingRejected, thinkingConfigFor } from './client';
 import { FunctionCallingConfigMode } from '@google/genai';
 import { buildSystemPrompt } from './prompt';
 import { executeTool, TOOLS, type ToolName, type ToolOutput } from './tools';
 import { getSettings } from '../settings';
+import { getSnapshot, prewarmSnapshot, type Snapshot } from './snapshot';
 
 export interface ChatCallbacks {
   /** Streamed text delta. */
@@ -29,7 +30,7 @@ export class Conversation {
   private chat: Chat;
   /** Index into GEMINI_MODELS. Moves down the list when a model is overloaded, and stays there. */
   private modelIdx = lastGoodModelIdx;
-  private constructor(private ai: GoogleGenAI, private system: string) {
+  private constructor(private ai: GoogleGenAI, private system: string, private snap: Snapshot | null) {
     this.chat = this.make();
   }
 
@@ -39,19 +40,36 @@ export class Conversation {
 
   /** Reads the key from settings (throws if missing). Pass `ai` to inject a client (scripts). */
   static async create(ai?: GoogleGenAI, opts: { model?: string } = {}): Promise<Conversation> {
-    const settings = await getSettings();
-    const conv = new Conversation(ai ?? (await getGemini()), buildSystemPrompt(settings));
+    // Snapshot ("data up front") loads in parallel with settings/client; usually already warm from prewarm().
+    const [settings, snap, client] = await Promise.all([getSettings(), getSnapshot(), ai ?? getGemini()]);
+    const conv = new Conversation(client, buildSystemPrompt(settings, snap), snap);
     const idx = opts.model ? GEMINI_MODELS.indexOf(opts.model) : -1;
-    if (idx > 0) {
+    if (idx >= 0 && idx !== conv.modelIdx) {
       conv.modelIdx = idx;
       conv.chat = conv.make();
     }
     return conv;
   }
 
+  /**
+   * Called at the start of each turn: if the snapshot was rebuilt (older than 3 min, or settings / mock grades changed),
+   * swap the system instruction. History is kept as is (same model, so thought signatures stay valid).
+   */
+  private async refreshSnapshot(): Promise<void> {
+    const snap = await getSnapshot();
+    if (!snap || snap === this.snap) return;
+    this.snap = snap;
+    this.system = buildSystemPrompt(await getSettings(), snap);
+    this.chat = this.make(this.chat.getHistory(true));
+  }
+
   /** Base request config. NOTE: a per-message `config` REPLACES the chat's config in @google/genai, so always spread this in. */
   private get baseConfig(): GenerateContentConfig {
-    return { systemInstruction: this.system, tools: [{ functionDeclarations: TOOLS }] };
+    return {
+      systemInstruction: this.system,
+      tools: [{ functionDeclarations: TOOLS }],
+      ...(thinkingConfigFor(this.model) ? { thinkingConfig: thinkingConfigFor(this.model) } : {}),
+    };
   }
 
   private make(history?: Content[]): Chat {
@@ -63,6 +81,7 @@ export class Conversation {
    * On error the chat history is rolled back to before this turn, so a retry starts clean.
    */
   async send(text: string, cb: ChatCallbacks = {}): Promise<string> {
+    await this.refreshSnapshot().catch((e) => console.warn('[chat] snapshot refresh failed', e));
     const snapshot = structuredClone(this.chat.getHistory(true));
     for (;;) {
       let emitted = false;
@@ -82,6 +101,12 @@ export class Conversation {
         lastGoodModelIdx = this.modelIdx;
         return out;
       } catch (e) {
+        // The model rejected the thinking level: retry the same model with its default (before anything was shown).
+        if (!emitted && noteThinkingRejected(this.model, e)) {
+          console.warn(`[chat] ${this.model} rejected the thinking level, retrying without`, e);
+          this.chat = this.make(snapshot);
+          continue;
+        }
         // Overloaded / unavailable before anything reached the user → silently switch to the next model.
         const canFallback = !emitted && isRetriableModelError(e) && this.modelIdx < GEMINI_MODELS.length - 1;
         if (canFallback) {
@@ -207,3 +232,6 @@ export function friendlyError(e: unknown): string {
       return "That didn't work. Please try again.";
   }
 }
+
+/** Start loading the data snapshot early (e.g. when the chat view mounts). */
+export const prewarm = prewarmSnapshot;
