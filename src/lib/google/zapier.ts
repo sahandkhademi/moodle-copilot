@@ -1,7 +1,8 @@
 // Live path: we connect to the user's Zapier MCP server (Google Calendar + Google Tasks) with the MCP
 // SDK and hand its tools to Gemini (mcpToTool + automatic function calling). Gemini maps our deadlines
 // onto Zapier's instruction-style tool params. Never throws out of runLiveSync / testZapier.
-import { mcpToTool } from '@google/genai';
+import type { Content, GoogleGenAI, Part } from '@google/genai';
+import { relevantTools, toFunctionDeclarations } from './mcpTools';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -175,6 +176,52 @@ function allFailed(work: Work[], error: string): SyncResult[] {
   }));
 }
 
+const MAX_ROUNDS = 12;
+
+/**
+ * Gemini ↔ Zapier tool loop. We list the MCP tools ourselves and clean their schemas (Zapier's raw schemas have
+ * $ref loops that Gemini rejects), then run each function call through the MCP client. Returns Gemini's final text.
+ */
+export async function runToolLoop(ai: GoogleGenAI, mcp: Client, model: string, prompt: string): Promise<string> {
+  const { tools } = await mcp.listTools();
+  const { declarations, nameMap } = toFunctionDeclarations(relevantTools(tools));
+  const contents: Content[] = [{ role: 'user', parts: [{ text: prompt }] }];
+  let calls = 0;
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const res = await ai.models.generateContent({
+      model,
+      contents,
+      config: { systemInstruction: SYSTEM, temperature: 0, tools: [{ functionDeclarations: declarations }] },
+    });
+    const fcs = res.functionCalls ?? [];
+    if (!fcs.length) {
+      const reason = res.promptFeedback?.blockReason ?? res.candidates?.[0]?.finishReason;
+      const text = res.text ?? '';
+      if (!text && reason) throw new Error(`Gemini stopped (${reason})`);
+      return text;
+    }
+    // Keep the model turn exactly as returned (thought signatures are needed for the next round).
+    const modelTurn = res.candidates?.[0]?.content;
+    if (modelTurn) contents.push(modelTurn);
+    const parts: Part[] = [];
+    for (const fc of fcs) {
+      if (++calls > MAX_TOOL_CALLS) throw new Error('Too many tool calls');
+      const mcpName = nameMap.get(fc.name ?? '') ?? fc.name ?? '';
+      let response: Record<string, unknown>;
+      try {
+        const out = await mcp.callTool({ name: mcpName, arguments: (fc.args ?? {}) as Record<string, unknown> });
+        const text = (out.content as { type: string; text?: string }[] | undefined)?.map((c) => c.text ?? '').join('\n').slice(0, 4000) ?? '';
+        response = out.isError ? { error: text || 'Tool error' } : { output: text };
+      } catch (e) {
+        response = { error: e instanceof Error ? e.message : String(e) };
+      }
+      parts.push({ functionResponse: { name: fc.name ?? mcpName, ...(fc.id ? { id: fc.id } : {}), response } });
+    }
+    contents.push({ role: 'user', parts });
+  }
+  throw new Error('Gemini did not finish within the round limit');
+}
+
 /** `work` holds only items that need writing; flags say which channel to write for each. */
 export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   if (!work.length) return [];
@@ -184,26 +231,9 @@ export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   try {
     const ai = await getGemini();
     mcp = await connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined });
-    const client = mcp;
-    // Overloaded model → next model. Safe to repeat: the prompt does Find-before-Create, so nothing is duplicated.
-    const res = await withModelFallback((model) =>
-      ai.models.generateContent({
-        model,
-        contents: buildSyncPrompt(toPromptItems(work)),
-        config: {
-          systemInstruction: SYSTEM,
-          temperature: 0,
-          tools: [mcpToTool(client)],
-          automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
-        },
-      }),
-    );
-    const text = res.text ?? '';
+    const text = await withModelFallback((model) => runToolLoop(ai, mcp!, model, buildSyncPrompt(toPromptItems(work))));
     const arr = parseJsonArray(text);
-    if (!arr) {
-      const reason = res.promptFeedback?.blockReason ?? res.candidates?.[0]?.finishReason;
-      return allFailed(work, `Unexpected reply from Gemini${reason ? ` (${reason})` : ''}. ${text.slice(0, 120)}`.trim());
-    }
+    if (!arr) return allFailed(work, `Unexpected reply from Gemini. ${text.slice(0, 120)}`.trim());
     const byId = new Map<string, Record<string, unknown>>();
     for (const r of arr) {
       const id = (r as { deadlineId?: unknown } | null)?.deadlineId;

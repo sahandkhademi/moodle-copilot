@@ -83,11 +83,17 @@ export async function mountCopilot(): Promise<() => void> {
   // 3. "Add N to Google" next to the Timeline title.
   let syncAll: Root | null = null;
   const title = timeline?.querySelector('h3.card-title, h5.card-title, .card-title');
-  if (title) {
+  if (title?.parentElement) {
+    // Put the title and our button on one flex row: "Timeline ............ [Add N to Google]".
+    const row = document.createElement('div');
+    row.setAttribute(MARK, 'title-row');
+    row.className = 'd-flex align-items-center justify-content-between flex-wrap';
+    row.style.gap = '8px';
+    title.parentElement.insertBefore(row, title);
+    row.appendChild(title);
     const wrap = document.createElement('div');
     wrap.setAttribute(MARK, 'sync-all');
-    wrap.className = 'float-end';
-    title.parentElement?.insertBefore(wrap, title);
+    row.appendChild(wrap);
     syncAll = rootIn(wrap, roots);
   }
 
@@ -123,10 +129,12 @@ export async function mountCopilot(): Promise<() => void> {
       if (!d || d.meeting) continue;
       let host = el.querySelector(`[${MARK}="item"]`);
       if (!host) {
-        host = document.createElement('div');
+        // Right after the activity name (inside the name row), so it never wraps under the time on JKU.
+        const nameRow = el.querySelector('.event-name-container > .d-flex') ?? el.querySelector('.event-name')?.parentElement;
+        host = document.createElement('span');
         host.setAttribute(MARK, 'item');
-        host.className = 'align-self-center';
-        (el.querySelector('.d-flex.flex-wrap') ?? el).appendChild(host);
+        host.className = 'flex-shrink-0 align-self-start';
+        (nameRow ?? el.querySelector('.d-flex.flex-wrap') ?? el).appendChild(host);
       }
       let r = itemRoots.get(host);
       if (!r) {
@@ -168,6 +176,8 @@ export async function mountCopilot(): Promise<() => void> {
     observer.disconnect();
     unwatch.forEach((u) => u());
     roots.forEach((r) => r.unmount());
+    const row = document.querySelector(`[${MARK}="title-row"]`);
+    if (row && title) row.parentElement?.insertBefore(title, row);
     document.querySelectorAll(`[${MARK}]`).forEach((n) => n.remove());
   };
 }

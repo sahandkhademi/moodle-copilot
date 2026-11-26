@@ -23,8 +23,9 @@ export async function getGemini(): Promise<GoogleGenAI> {
 export function isRetriableModelError(e: unknown): boolean {
   const status = (e as { status?: number })?.status;
   const msg = e instanceof Error ? e.message : String(e);
-  if (status && [404, 500, 502, 503, 504].includes(status)) return true;
-  return /UNAVAILABLE|high demand|overloaded|DEADLINE_EXCEEDED|not found for API version|aborted|timed out/i.test(msg);
+  // 429: per-model quota (the free tier allows ~20 requests/day per model), so another model usually still works.
+  if (status && [404, 429, 500, 502, 503, 504].includes(status)) return true;
+  return /UNAVAILABLE|high demand|overloaded|RESOURCE_EXHAUSTED|quota|DEADLINE_EXCEEDED|not found for API version|aborted|timed out/i.test(msg);
 }
 
 let preferred = 0; // sticky: once a model fails, stay on the one that works for this session

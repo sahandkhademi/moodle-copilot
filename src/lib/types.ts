@@ -58,6 +58,8 @@ export interface Deadline {
   submitted?: boolean;
   /** Online meeting (Zoom) — shown with the orange meeting icon. */
   meeting?: boolean;
+  /** false = Moodle says nothing can be done anymore (e.g. past the cut-off date). Not nagged about. */
+  actionable?: boolean;
 }
 
 export interface DataSource {

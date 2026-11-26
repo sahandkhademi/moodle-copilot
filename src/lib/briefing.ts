@@ -65,7 +65,8 @@ export function buildBriefing(input: BriefingInput, settings: Pick<Settings, 'ab
   const t = now.getTime();
   const open = input.deadlines.filter((d) => !d.submitted && !done.has(d.id) && !d.meeting);
 
-  const overdue = open.filter((d) => new Date(d.due).getTime() < t && t - new Date(d.due).getTime() < 7 * DAY);
+  // Only overdue things you can still do something about (Moodle marks closed ones as not actionable).
+  const overdue = open.filter((d) => d.actionable !== false && new Date(d.due).getTime() < t && t - new Date(d.due).getTime() < 7 * DAY);
   const soon = open.filter((d) => new Date(d.due).getTime() >= t && new Date(d.due).getTime() - t <= 3 * DAY);
   const week = open.filter((d) => new Date(d.due).getTime() >= t && new Date(d.due).getTime() - t <= 7 * DAY);
   const exams = open.filter((d) => d.type === 'exam' && new Date(d.due).getTime() - t > 3 * DAY && new Date(d.due).getTime() - t <= 21 * DAY);

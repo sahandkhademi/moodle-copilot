@@ -141,6 +141,7 @@ export function parseDeadlines(data: { events?: RawEvent[] }, baseUrl: string): 
       // Not "submitted": Moodle drops submitted items from action events. actionable=false only means "can't act right now".
     };
     if (MEETING_MODULES.has(ev.modulename ?? '')) d.meeting = true;
+    if (ev.action && ev.action.actionable === false) d.actionable = false;
     out.push(d);
   }
   return out.sort((a, b) => a.due.localeCompare(b.due));
