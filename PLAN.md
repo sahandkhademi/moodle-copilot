@@ -51,7 +51,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 
 ## Phase 2 — The two hero features
 
-- [ ] **2.1 AI chat in the side panel**
+- [x] **2.1 AI chat in the side panel**
   - Chat UI: streaming answers, markdown, suggested-question chips ("What's due this week?", "How did I do in Logik?", "Am I at risk anywhere for attendance?")
   - Claude tool-use loop over the data-layer functions
   - System prompt: student assistant, answers briefly, replies in the user's language, cites the course and links to the Moodle page
@@ -66,7 +66,7 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 
 - [x] **3.1 Zapier setup (one time, ~10 min)**: on zapier.com, create an MCP server and enable *Google Calendar: Create Detailed Event*, *Google Calendar: Find Event* and *Google Tasks: Create Task*, connected to our Google account. Paste the MCP server URL and token into the extension's settings
 - [x] **3.2 MCP connector in the chat**: add the Zapier server to the Claude request (`mcp_servers` + `mcp_toolset`, beta `mcp-client-2025-11-20`). Check that Claude can list and call the Zapier tools
-- [ ] **3.3 Ask the chat to do it**: "Put my logic exam in my calendar", "Make tasks for everything due this week". Show a confirmation card listing what will be created, then one tap writes it
+- [x] **3.3 Ask the chat to do it**: "Put my logic exam in my calendar", "Make tasks for everything due this week". Show a confirmation card listing what will be created, then one tap writes it
 - [x] **3.4 One-click buttons on the dashboard**: "📅 Add to Calendar" per deadline and "Sync all to Calendar + Tasks" at the top. They run the same Zapier tools, so no typing is needed
 - [x] **3.5 No duplicates**: store Moodle-event-ID → "synced" locally, and use *Find Event* before creating. Show a ✓ on deadlines that are already synced
 - [ ] *(only if Zapier blocks us)* **3.6 Direct Google APIs** through `chrome.identity` OAuth, as plan B. Skip otherwise
@@ -84,7 +84,7 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
   - Per course: absences so far, the limit (default 20 % of sessions, configurable), and how many absences are left
   - Color states: 🟢 safe · 🟠 one or two absences left · 🔴 over the limit
   - Shows up by itself: a banner at the top of the dashboard, mentioned by the chat when relevant, and a Chrome notification when a course turns 🟠
-- [ ] **4.3 Voice input**
+- [x] **4.3 Voice input**
   - Mic button in the chat (Web Speech API, `de-AT` and `en-US`). Speak, and it sends when you stop talking. No typing
   - Optional: read the answer aloud (`speechSynthesis`), with a toggle
   - Fallback if the mic is blocked: the button hides itself and typing still works
