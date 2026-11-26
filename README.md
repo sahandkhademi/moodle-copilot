@@ -34,3 +34,15 @@ npm run build        # → .output/chrome-mv3
 | `src/lib/google/sync.ts` | Google Calendar/Tasks via Zapier MCP |
 | `src/components/*` | Chat, Dashboard, Settings, Google buttons |
 | `src/entrypoints/` | Side panel + background service worker |
+
+## Zapier setup (one time)
+
+Google Calendar and Google Tasks are reached through a Zapier MCP server, so there is no Google OAuth screen.
+
+1. Go to [mcp.zapier.com](https://mcp.zapier.com) and create a new MCP server (client: "Other" / "Anthropic API").
+2. Add these three actions: **Google Calendar: Create Detailed Event**, **Google Calendar: Find Event(s)**, **Google Tasks: Create Task**.
+3. When asked, connect your Google account for each action.
+4. Copy the server URL (and the token, if one is shown separately).
+5. In the extension: Settings, turn **Mock mode** off, paste the URL into "Zapier MCP server URL" (token optional), press "Verbindung testen". You should see the tool names.
+
+Every created event or task counts against the Zapier free-plan task quota. Rehearse with Mock mode on; switch it off for the real run.
