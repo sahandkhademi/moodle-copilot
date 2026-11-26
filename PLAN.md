@@ -88,7 +88,7 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
   - Mic button in the chat (Web Speech API, `de-AT` and `en-US`). Speak, and it sends when you stop talking. No typing
   - Optional: read the answer aloud (`speechSynthesis`), with a toggle
   - Fallback if the mic is blocked: the button hides itself and typing still works
-- [ ] **4.4 New-grade notifications**
+- [x] **4.4 New-grade notifications**
   - Background check every 15 min (`chrome.alarms`). Compare with the last saved grades
   - New grade → Chrome notification "📊 New grade in Logik: 2 (82 %)". Clicking it opens the side panel on that grade
   - Red dot on the toolbar icon until you've seen it
