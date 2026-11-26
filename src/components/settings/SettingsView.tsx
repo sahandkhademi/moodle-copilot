@@ -4,7 +4,8 @@ import { useSettings, type Settings } from '@/lib/settings';
 import { DemoTools } from '@/components/demo/DemoTools';
 import { MoodleTest } from '@/components/moodle/MoodleTest';
 import { ZapierTest } from '@/components/google/ZapierTest';
-import { Block, Input } from '@/components/ui/moodle';
+import { Block, Button, Input } from '@/components/ui/moodle';
+import { KEYS, setItem } from '@/lib/storage';
 
 function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -102,6 +103,20 @@ export default function SettingsView() {
             <Input type="password" defaultValue={s.zapierMcpToken} onBlur={(e) => set({ zapierMcpToken: e.target.value.trim() })} />
           </Field>
           <ZapierTest />
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+            <span className="text-[0.8125rem] text-muted">Copilot remembers what it already added, so nothing is added twice.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                await setItem(KEYS.googleSynced, {});
+                setSaved(true);
+                setTimeout(() => setSaved(false), 1200);
+              }}
+            >
+              Forget added items
+            </Button>
+          </div>
         </div>
       </Block>
 

@@ -36,28 +36,70 @@ export function viennaLocal(d: Date): string {
     .replace(/ /g, ' ');
 }
 
-export function eventTitle(item: SyncItem): string {
-  const tag = item.course?.shortname ?? '';
-  return tag ? `[${tag}] ${item.deadline.title}` : item.deadline.title;
+/** Short course name for titles: "VL / UE Logic" → "Logic". */
+function courseName(item: SyncItem): string {
+  const full = item.course?.fullname ?? '';
+  return full.replace(/^((VL|UE|VO|KV|KO|KS|KT|PR|PS|SE|IK|VU)\s*\/?\s*)+/, '').trim() || item.course?.shortname || '';
 }
 
-/** Assignments/quizzes: 30-min block ending at due. Exams: start at due, 90 min. Events: start at due, 60 min. */
+const KIND: Record<string, string> = { assignment: 'Assignment', quiz: 'Quiz', exam: 'Exam', event: 'Event' };
+
+/** Calendar title, like "Due: FOB2B · Logic" or "Exam: Logic final exam · Logic". */
+export function eventTitle(item: SyncItem): string {
+  const c = courseName(item);
+  const prefix = item.deadline.type === 'exam' ? 'Exam' : item.deadline.type === 'event' ? 'Event' : 'Due';
+  return `${prefix}: ${item.deadline.title}${c ? ` · ${c}` : ''}`;
+}
+
+/** Google Tasks has no due *time* in its API, so the time goes into the title: "FOB2B (Logic) · due 17:00". */
+export function taskTitle(item: SyncItem): string {
+  const c = courseName(item);
+  const time = viennaLocal(new Date(item.deadline.due)).slice(11, 16);
+  return `${item.deadline.title}${c ? ` (${c})` : ''} · due ${time}`;
+}
+
+/** Human due date in Vienna: "Monday, 30 November 2026, 17:00". */
+export function dueText(item: SyncItem): string {
+  return new Date(item.deadline.due).toLocaleString('en-GB', { timeZone: TIMEZONE, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** Description / notes for both the event and the task. */
+export function detailsText(item: SyncItem): string {
+  const d = item.deadline;
+  const lines = [
+    [item.course?.fullname, KIND[d.type] ?? 'Deadline'].filter(Boolean).join(' · '),
+    `Due: ${dueText(item)}`,
+    d.description ? `\n${d.description.slice(0, 600)}` : '',
+    d.url ? `\nOpen in Moodle: ${d.url}` : '',
+    '\n— Added by Moodle Copilot',
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+/**
+ * The calendar block sits at the moment it is really due (like "Due: Report 24.11" at 12:45):
+ * assignments/quizzes 30 min starting at the due time, exams 90 min, other events 60 min.
+ */
 export function eventWindow(item: SyncItem): { start: Date; end: Date } {
   const due = new Date(item.deadline.due);
   const min = 60_000;
-  switch (item.deadline.type) {
-    case 'exam':
-      return { start: due, end: new Date(due.getTime() + 90 * min) };
-    case 'event':
-      return { start: due, end: new Date(due.getTime() + 60 * min) };
-    default:
-      return { start: new Date(due.getTime() - 30 * min), end: due };
-  }
+  const len = item.deadline.type === 'exam' ? 90 : item.deadline.type === 'event' ? 60 : 30;
+  const end = new Date(due.getTime() + len * min);
+  // A 23:59 deadline would spill past midnight onto the next day: then the block ends at the due time instead.
+  if (viennaLocal(end).slice(0, 10) !== viennaLocal(due).slice(0, 10)) return { start: new Date(due.getTime() - len * min), end: due };
+  return { start: due, end };
+}
+
+/** Google Calendar color id 11 = Tomato (red), like the user's "Due:" blocks. Exams: 6 = Tangerine. */
+export function eventColorId(item: SyncItem): string {
+  return item.deadline.type === 'exam' ? '6' : '11';
 }
 
 export interface PromptItem {
   deadlineId: string;
   title: string;
+  taskTitle?: string;
+  details?: string;
   type: string;
   course?: string;
   calendar: boolean;
@@ -75,6 +117,8 @@ export function toPromptItems(work: Work[]): PromptItem[] {
     return {
       deadlineId: item.deadline.id,
       title: eventTitle(item),
+      taskTitle: taskTitle(item),
+      details: detailsText(item),
       type: item.deadline.type,
       course: item.course?.fullname,
       calendar,
@@ -96,8 +140,8 @@ export function buildSyncPrompt(prompt: PromptItem[]): string {
 ${JSON.stringify(prompt, null, 2)}
 
 Rules per item:
-- If "calendar" is true: first use the Google Calendar "Find Event(s)" tool to look for an event with exactly the same title on the same day (eventStart's date). If one exists, do not create another (result "exists"). Otherwise use "Create Detailed Event": summary = title, start = eventStart, end = eventEnd (timezone ${TIMEZONE}), description = the Moodle link (if any) followed by the description text (if any).
-- If "tasks" is true: use "Google Tasks: Create Task" in the default task list (or a list called "Moodle" if one exists). Title = title, due date = dueDay, notes = the Moodle link (if any).
+- If "calendar" is true: first use the Google Calendar "Find Event(s)" tool to look for an event with exactly the same title on the same day (eventStart's date). If one exists, do not create another (result "exists"). Otherwise use "Create Detailed Event": summary = title, start = eventStart, end = eventEnd (timezone ${TIMEZONE}), description = details, color red (Tomato).
+- If "tasks" is true: use "Google Tasks: Create Task" in the default task list (or a list called "Moodle" if one exists). Title = taskTitle, due date = dueDay, notes = details.
 - If "calendar" or "tasks" is false, do not touch that service for that item (result "skipped").
 
 When finished, reply with ONLY a JSON array (no prose, no code fence), one entry per item:

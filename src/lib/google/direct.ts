@@ -2,7 +2,7 @@
 // One listTools + N parallel tool calls instead of a multi-round Gemini ↔ Zapier conversation.
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { SyncOutcome, SyncResult } from './sync';
-import { eventTitle, eventWindow, TIMEZONE, viennaLocal, type Work } from './zapier';
+import { detailsText, dueText, eventColorId, eventTitle, eventWindow, taskTitle, TIMEZONE, viennaLocal, type Work } from './zapier';
 import type { McpToolInfo } from './mcpTools';
 
 export const CALL_TIMEOUT_MS = 40_000;
@@ -46,32 +46,41 @@ export function calendarArgs(tool: McpToolInfo, w: Work): Record<string, unknown
   const p = props(tool);
   const { start, end } = eventWindow(w.item);
   const title = eventTitle(w.item);
-  const desc = [w.item.deadline.url, w.item.deadline.description].filter(Boolean).join('\n\n');
+  const desc = detailsText(w.item);
   const args: Record<string, unknown> = {};
   const set = (k: string | undefined, v: unknown) => {
     if (k && v != null && v !== '') args[k] = v;
   };
-  set(field(p, /^instructions$/i), `Create a Google Calendar event "${title}" from ${viennaLocal(start)} to ${viennaLocal(end)} (${TIMEZONE}) in the primary calendar. Description: ${desc || '-'}`);
+  set(
+    field(p, /^instructions$/i),
+    `Create a Google Calendar event "${title}" from ${viennaLocal(start)} to ${viennaLocal(end)} (${TIMEZONE}) in the primary calendar, ` +
+      `colored red (Tomato, colorId ${eventColorId(w.item)}), with a popup reminder 1 day before and 1 hour before. ` +
+      `It marks the moment the item is due (${dueText(w.item)}). Use this description exactly:\n${desc}`,
+  );
   set(field(p, /^summary$/i, /title/i, /^name$/i), title);
   set(field(p, /^start(__)?date_?time$/i, /^start__dateTime$/, /^start(_time)?$/i, /start/i), offsetIso(start));
   set(field(p, /^end(__)?date_?time$/i, /^end__dateTime$/, /^end(_time)?$/i, /end/i), offsetIso(end));
   set(field(p, /time_?zone/i), TIMEZONE);
   set(field(p, /^description$/i, /notes?/i, /details/i), desc);
+  set(field(p, /color/i), eventColorId(w.item));
+  set(field(p, /^location$/i), w.item.deadline.url);
+  set(field(p, /^all_?day$/i), false);
   return args;
 }
 
 export function taskArgs(tool: McpToolInfo, w: Work): Record<string, unknown> {
   const p = props(tool);
-  const title = eventTitle(w.item);
+  const title = taskTitle(w.item);
   const due = viennaLocal(new Date(w.item.deadline.due)).slice(0, 10);
+  const notes = detailsText(w.item);
   const args: Record<string, unknown> = {};
   const set = (k: string | undefined, v: unknown) => {
     if (k && v != null && v !== '') args[k] = v;
   };
-  set(field(p, /^instructions$/i), `Create a Google Task "${title}" due ${due} in the default list.${w.item.deadline.url ? ` Notes: ${w.item.deadline.url}` : ''}`);
+  set(field(p, /^instructions$/i), `Create a Google Task "${title}" due ${due} in the default list. Use these notes exactly:\n${notes}`);
   set(field(p, /^title$/i, /title/i, /^name$/i), title);
   set(field(p, /^due/i, /date/i), due);
-  set(field(p, /^notes?$/i, /description/i), w.item.deadline.url);
+  set(field(p, /^notes?$/i, /description/i), notes);
   return args;
 }
 

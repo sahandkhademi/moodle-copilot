@@ -18,6 +18,9 @@ const loopy = {
     summary: { type: 'string' },
     start__dateTime: { type: 'string' },
     end__dateTime: { type: 'string' },
+    description: { type: 'string' },
+    location: { type: 'string' },
+    colorId: { type: 'string' },
     attendees: { $ref: '#/$defs/Node' },
   },
   required: ['instructions', 'attendees'],
@@ -38,7 +41,7 @@ function makeServer() {
     tools: [
       { name: 'google_calendar_create_detailed_event', description: 'Create a detailed event in Google Calendar', inputSchema: loopy },
       { name: 'google_calendar_find_events', description: 'Find events in Google Calendar', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, search_term: { type: 'string' } }, required: ['instructions'] } },
-      { name: 'google_tasks_create_task', description: 'Create a task in Google Tasks', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, title: { type: 'string' }, due: { type: 'string' } }, required: ['instructions'] } },
+      { name: 'google_tasks_create_task', description: 'Create a task in Google Tasks', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, title: { type: 'string' }, due: { type: 'string' }, notes: { type: 'string' } }, required: ['instructions'] } },
       { name: 'slack_send_message', description: 'Send a Slack message', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } },
     ],
   }));
@@ -65,16 +68,25 @@ const url = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}
   const mcp = await connectMcp({ url });
   const { tools } = await mcp.listTools();
   const mk = (id: string, title: string, due: string) => ({ item: { deadline: { id, courseId: 1, title, type: 'assignment', due }, course: { id: 1, shortname: 'LOG', fullname: 'VL / UE Logic', url: '' } }, calendar: true, tasks: true });
-  const work = [mk('d1', 'Homework 7', '2026-11-30T22:59:00Z'), mk('d2', 'Sheet 8', '2026-12-01T22:59:00Z'), mk('d3', 'Quiz 3', '2026-12-02T17:00:00Z')] as never[];
+  const work = [mk('d1', 'Homework 7', '2026-11-30T22:59:00Z'), mk('d2', 'Sheet 8', '2026-12-01T22:59:00Z'), mk('d3', 'Quiz 3', '2026-12-02T16:00:00Z')] as never[];
   created.length = 0;
   const t = Date.now();
   const res = await directSync(mcp, tools, work);
   console.log(`direct path: ${res?.length} items in ${Date.now() - t} ms →`, res?.map((r) => `${r.deadlineId}:${r.calendar}/${r.tasks}`).join(' '));
   const cal = created.find((c) => String(c.tool).includes('calendar_create')) as { args: Record<string, unknown> };
-  console.log('calendar args sample:', JSON.stringify(cal.args));
+  console.log('calendar args sample:', JSON.stringify(cal.args, null, 1));
   assert.equal(res?.every((r) => r.calendar === 'created' && r.tasks === 'created'), true);
   assert.equal(created.length, 6);
-  assert.match(String(cal.args.start__dateTime), /^2026-11-30T23:29:00$/);
+  assert.match(String(cal.args.start__dateTime), /^2026-11-30T23:29:00$/); // 23:59 deadline: block ends at the due time (same day)
+  assert.equal(cal.args.colorId, '11');
+  assert.match(String(cal.args.summary), /^Due: Homework 7 · Logic$/);
+  assert.match(String(cal.args.description), /Due: Monday, 30 November 2026/);
+  const task = created.find((c) => String(c.tool).includes('tasks_create')) as { args: Record<string, unknown> };
+  console.log('task args sample:', JSON.stringify(task.args));
+  assert.match(String(task.args.title), /^Homework 7 \(Logic\) · due 23:59$/);
+  const q3 = created.filter((c) => String(c.tool).includes('calendar_create')).map((c) => (c as { args: Record<string, unknown> }).args).find((a) => String(a.summary).includes('Quiz 3'))!;
+  assert.equal(q3.start__dateTime, '2026-12-02T17:00:00'); // daytime deadline: block starts when it is due
+  assert.equal(q3.end__dateTime, '2026-12-02T17:30:00');
   console.log('direct path check passed ✓');
   await mcp.close();
 }
