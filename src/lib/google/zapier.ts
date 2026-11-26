@@ -1,16 +1,18 @@
-// Live path: one Claude request per sync, using the Messages API MCP connector to reach the
-// user's Zapier MCP server (Google Calendar + Google Tasks). Claude maps our deadlines onto
-// Zapier's instruction-style tool params. Never throws out of runLiveSync / testZapier.
-import type Anthropic from '@anthropic-ai/sdk';
+// Live path: we connect to the user's Zapier MCP server (Google Calendar + Google Tasks) with the MCP
+// SDK and hand its tools to Gemini (mcpToTool + automatic function calling). Gemini maps our deadlines
+// onto Zapier's instruction-style tool params. Never throws out of runLiveSync / testZapier.
+import { mcpToTool } from '@google/genai';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { SyncItem, SyncOutcome, SyncResult } from './sync';
-import { getClaude, CLAUDE_MODEL } from '../ai/client';
-import { getSettings, type Settings } from '../settings';
+import { getGemini, GEMINI_MODEL } from '../ai/client';
+import { getSettings } from '../settings';
 
-export const MCP_BETA = 'mcp-client-2025-11-20';
 export const TIMEZONE = 'Europe/Vienna';
-const MAX_CONTINUATIONS = 6;
+/** Upper bound for tool calls in one sync (find + create calendar, create task, per item). */
+const MAX_TOOL_CALLS = 60;
 
-type CreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export interface Work {
   item: SyncItem;
   calendar: boolean;
@@ -105,51 +107,27 @@ export interface McpServerCfg {
   token?: string;
 }
 
-export function buildRequest(prompt: string, srv: McpServerCfg, system: string = SYSTEM): CreateParams {
-  return {
-    model: CLAUDE_MODEL,
-    betas: [MCP_BETA],
-    max_tokens: 16000,
-    output_config: { effort: 'low' },
-    system,
-    mcp_servers: [{ type: 'url', url: srv.url, name: 'zapier', ...(srv.token ? { authorization_token: srv.token } : {}) }],
-    tools: [{ type: 'mcp_toolset', mcp_server_name: 'zapier' }],
-    messages: [{ role: 'user', content: prompt }],
-  };
-}
-
-export function buildSyncRequest(work: Work[], srv: McpServerCfg): CreateParams {
-  return buildRequest(buildSyncPrompt(toPromptItems(work)), srv);
-}
-
-type Msg = Anthropic.Beta.Messages.BetaMessage;
-type Block = Msg['content'][number];
-
-/** Runs the request, continuing on pause_turn. Returns the final message plus every block seen. */
-async function runTurn(client: Anthropic, params: CreateParams): Promise<{ msg: Msg; blocks: Block[] }> {
-  const messages = [...params.messages];
-  const blocks: Block[] = [];
-  let msg: Msg | undefined;
-  for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
-    msg = await client.beta.messages.create({ ...params, messages });
-    blocks.push(...msg.content);
-    if (msg.stop_reason !== 'pause_turn') break;
-    messages.push({ role: 'assistant', content: msg.content as never });
+/** Connects to the Zapier MCP server: Streamable HTTP first, SSE as a fallback. */
+export async function connectMcp(srv: McpServerCfg): Promise<Client> {
+  const requestInit = srv.token ? { headers: { Authorization: `Bearer ${srv.token}` } } : undefined;
+  const make = () => new Client({ name: 'moodle-copilot', version: '1.0.0' });
+  let first: unknown;
+  const client = make();
+  try {
+    await client.connect(new StreamableHTTPClientTransport(new URL(srv.url), { requestInit }));
+    return client;
+  } catch (e) {
+    first = e;
+    await client.close().catch(() => {});
   }
-  return { msg: msg!, blocks };
-}
-
-function finalText(blocks: Block[]): string {
-  // Text after the last tool activity is the final answer.
-  let lastTool = -1;
-  blocks.forEach((b, i) => {
-    if (b.type === 'mcp_tool_use' || b.type === 'mcp_tool_result') lastTool = i;
-  });
-  return blocks
-    .slice(lastTool + 1)
-    .filter((b) => b.type === 'text')
-    .map((b) => (b as { text: string }).text)
-    .join('\n');
+  const fallback = make();
+  try {
+    await fallback.connect(new SSEClientTransport(new URL(srv.url), { requestInit }));
+    return fallback;
+  } catch {
+    await fallback.close().catch(() => {});
+    throw first;
+  }
 }
 
 /** Pulls the first JSON array out of text, tolerating code fences and prose. */
@@ -168,14 +146,18 @@ export function parseJsonArray(text: string): unknown[] | null {
   return null;
 }
 
-export function friendlyError(e: unknown, lang: Settings['language'] = 'de'): string {
-  const de = lang === 'de';
-  const err = e as { status?: number; message?: string };
+
+export function friendlyError(e: unknown): string {
+  const err = e as { status?: number; code?: number; message?: string };
   const raw = err?.message ?? String(e);
-  if (err?.status === 401 || /api key|authentication/i.test(raw)) return de ? 'Claude-API-Key ungültig oder fehlt (Einstellungen).' : 'Claude API key missing or invalid (Settings).';
-  if (err?.status === 429) return de ? 'Zu viele Anfragen, bitte kurz warten.' : 'Rate limited, wait a moment.';
-  if (/mcp|zapier/i.test(raw)) return de ? `Zapier-Verbindung fehlgeschlagen: ${raw.slice(0, 160)}` : `Zapier connection failed: ${raw.slice(0, 160)}`;
-  if (/fetch|network|Failed to/i.test(raw)) return de ? 'Netzwerkfehler. Bist du online?' : 'Network error. Are you online?';
+  if (/SERVICE_DISABLED|has not been used|PERMISSION_DENIED/i.test(raw) || err?.status === 403) return 'Gemini API is not enabled for this key (403). Check the key in Settings.';
+  if (err?.status === 401 || /API key|UNAUTHENTICATED/i.test(raw)) {
+    return /zapier|mcp/i.test(raw) ? 'Zapier rejected the request (401). Check the URL or token in Settings.' : 'Gemini API key missing or invalid (Settings).';
+  }
+  if (err?.status === 429 || /RESOURCE_EXHAUSTED/i.test(raw)) return 'Rate limited, wait a moment and try again.';
+  if (/No Gemini API key/i.test(raw)) return raw;
+  if (/mcp|zapier|sse|streamable/i.test(raw)) return `Zapier connection failed: ${raw.slice(0, 160)}`;
+  if (/fetch|network|Failed to/i.test(raw)) return 'Network error. Are you online?';
   return raw.slice(0, 200);
 }
 
@@ -196,19 +178,26 @@ function allFailed(work: Work[], error: string): SyncResult[] {
 export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   if (!work.length) return [];
   const settings = await getSettings();
-  const de = settings.language === 'de';
-  if (!settings.zapierMcpUrl) return allFailed(work, de ? 'Keine Zapier-URL in den Einstellungen.' : 'No Zapier URL in Settings.');
+  if (!settings.zapierMcpUrl) return allFailed(work, 'No Zapier URL in Settings.');
+  let mcp: Client | undefined;
   try {
-    const client = await getClaude();
-    const params = buildSyncRequest(work, { url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined });
-    const { msg, blocks } = await runTurn(client, params);
-    if (msg.stop_reason === 'refusal') return allFailed(work, de ? 'Claude hat die Anfrage abgelehnt.' : 'Claude declined the request.');
-    if (msg.stop_reason === 'max_tokens') return allFailed(work, de ? 'Antwort abgeschnitten (zu lang).' : 'Response was cut off.');
-    const arr = parseJsonArray(finalText(blocks));
+    const ai = await getGemini();
+    mcp = await connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined });
+    const res = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: buildSyncPrompt(toPromptItems(work)),
+      config: {
+        systemInstruction: SYSTEM,
+        temperature: 0,
+        tools: [mcpToTool(mcp)],
+        automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
+      },
+    });
+    const text = res.text ?? '';
+    const arr = parseJsonArray(text);
     if (!arr) {
-      const toolErr = blocks.find((b) => b.type === 'mcp_tool_result' && b.is_error) as { content: unknown } | undefined;
-      const detail = toolErr ? JSON.stringify(toolErr.content).slice(0, 160) : '';
-      return allFailed(work, (de ? 'Unerwartete Antwort von Claude. ' : 'Unexpected reply from Claude. ') + detail);
+      const reason = res.promptFeedback?.blockReason ?? res.candidates?.[0]?.finishReason;
+      return allFailed(work, `Unexpected reply from Gemini${reason ? ` (${reason})` : ''}. ${text.slice(0, 120)}`.trim());
     }
     const byId = new Map<string, Record<string, unknown>>();
     for (const r of arr) {
@@ -222,16 +211,18 @@ export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
           deadlineId: item.deadline.id,
           calendar: calendar ? 'failed' : 'skipped',
           tasks: tasks ? 'failed' : 'skipped',
-          error: de ? 'Keine Rückmeldung für diesen Eintrag.' : 'No result for this item.',
+          error: 'No result for this item.',
         };
       }
       const cal = asOutcome(r.calendar, calendar);
       const tsk = asOutcome(r.tasks, tasks);
       const failed = cal === 'failed' || tsk === 'failed';
-      return { deadlineId: item.deadline.id, calendar: cal, tasks: tsk, error: failed ? String(r.error ?? (de ? 'Fehlgeschlagen' : 'Failed')) : undefined };
+      return { deadlineId: item.deadline.id, calendar: cal, tasks: tsk, error: failed ? String(r.error ?? 'Failed') : undefined };
     });
   } catch (e) {
-    return allFailed(work, friendlyError(e, settings.language));
+    return allFailed(work, friendlyError(e));
+  } finally {
+    await mcp?.close().catch(() => {});
   }
 }
 
@@ -241,24 +232,19 @@ export interface ZapierTestResult {
   error?: string;
 }
 
-/** Minimal no-write request: asks Claude to list the MCP tools it can see. */
+/** Connects to the MCP server and lists its tools. No LLM, no writes. */
 export async function testZapier(): Promise<ZapierTestResult> {
   const settings = await getSettings();
   if (!settings.zapierMcpUrl) return { ok: false, tools: [], error: 'No Zapier URL' };
+  let mcp: Client | undefined;
   try {
-    const client = await getClaude();
-    const params = buildRequest(
-      'List the names of every tool you can use from the connected MCP server. Do NOT call any of them. Reply with ONLY a JSON array of tool name strings.',
-      { url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined },
-      'You are a connection tester. Never call tools. Reply only with the requested JSON.',
-    );
-    params.max_tokens = 2000;
-    const { msg, blocks } = await runTurn(client, params);
-    if (msg.stop_reason === 'refusal') return { ok: false, tools: [], error: 'Claude declined the request.' };
-    const tools = (parseJsonArray(finalText(blocks)) ?? []).filter((x): x is string => typeof x === 'string');
-    if (!tools.length) return { ok: false, tools: [], error: 'Claude sees no tools. Check the URL/token and that the actions are enabled.' };
+    mcp = await connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined });
+    const tools = (await mcp.listTools()).tools.map((t) => t.name);
+    if (!tools.length) return { ok: false, tools: [], error: 'Connected, but no tools are enabled. Add Google Calendar and Google Tasks actions on mcp.zapier.com.' };
     return { ok: true, tools };
   } catch (e) {
-    return { ok: false, tools: [], error: friendlyError(e, settings.language) };
+    return { ok: false, tools: [], error: friendlyError(e) };
+  } finally {
+    await mcp?.close().catch(() => {});
   }
 }

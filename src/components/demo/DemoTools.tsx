@@ -1,14 +1,16 @@
 // Demo helpers in Settings (mock mode only): simulate a new grade, reset the demo.
 import { useState } from 'react';
+import { RotateCcw } from 'lucide-react';
+import { Button, Select } from '@/components/ui/moodle';
 import { useSettings } from '@/lib/settings';
 import { KEYS, setItem } from '@/lib/storage';
 import { MOCK_QUEUED_GRADE } from '@/lib/data/mock';
 import { ABSENCE_KEY } from '@/lib/background/check';
 
 const DELAYS = [
-  { label: 'sofort', ms: 0 },
-  { label: '5 s', ms: 5000 },
-  { label: '10 s', ms: 10000 },
+  { label: 'Now', ms: 0 },
+  { label: 'In 5 s', ms: 5000 },
+  { label: 'In 10 s', ms: 10000 },
 ];
 
 function ping(msg: { type: string; silent?: boolean }): Promise<void> {
@@ -21,9 +23,6 @@ function ping(msg: { type: string; silent?: boolean }): Promise<void> {
     }
   });
 }
-
-const btn =
-  'rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-60';
 
 export function DemoTools() {
   const [s] = useSettings();
@@ -44,14 +43,14 @@ export function DemoTools() {
       await setItem(KEYS.mockExtraGrades, []);
       await ping({ type: 'check-now', silent: true });
       if (delay > 0) {
-        flash(`Note kommt in ${delay / 1000} s …`);
+        flash(`Grade arrives in ${delay / 1000} s...`);
         await new Promise((r) => setTimeout(r, delay));
       }
       await setItem(KEYS.mockExtraGrades, [{ ...MOCK_QUEUED_GRADE, gradedAt: new Date().toISOString() }]);
       await ping({ type: 'check-now' });
-      flash('Neue Note gesendet ✓');
+      flash('New grade sent');
     } catch {
-      flash('Fehler');
+      flash('Something went wrong');
     }
     setBusy(null);
   };
@@ -66,44 +65,33 @@ export function DemoTools() {
       await setItem(KEYS.googleSynced, {});
       await setItem(KEYS.doneDeadlines, {});
       await ping({ type: 'check-now', silent: true });
-      flash('Demo zurückgesetzt ✓');
+      flash('Demo reset');
     } catch {
-      flash('Fehler');
+      flash('Something went wrong');
     }
     setBusy(null);
   };
 
   return (
-    <div className="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+    <div className="space-y-2 border-t border-line pt-3">
       <div className="flex items-center gap-2">
-        <button
-          disabled={busy !== null}
-          onClick={simulate}
-          className={`${btn} flex-1 bg-brand-600 text-white hover:bg-brand-700`}
-        >
-          🎬 Neue Note simulieren
-        </button>
-        <select
-          value={delay}
-          onChange={(e) => setDelay(Number(e.target.value))}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-900"
-        >
+        <Button variant="secondary" disabled={busy !== null} busy={busy === 'sim'} onClick={simulate} className="flex-1">
+          Simulate new grade
+        </Button>
+        <Select value={delay} onChange={(e) => setDelay(Number(e.target.value))} aria-label="Delay" className="!w-auto">
           {DELAYS.map((d) => (
             <option key={d.ms} value={d.ms}>
               {d.label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <button
-          disabled={busy !== null}
-          onClick={reset}
-          className={`${btn} border border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800`}
-        >
-          ↺ Demo zurücksetzen
-        </button>
-        <span className="text-xs text-brand-600 dark:text-brand-500">{note}</span>
+        <Button variant="outline" disabled={busy !== null} busy={busy === 'reset'} onClick={reset}>
+          {busy !== 'reset' && <RotateCcw className="h-3.5 w-3.5" />}
+          Reset demo
+        </Button>
+        <span className="text-[0.8125rem] text-brand-500">{note}</span>
       </div>
     </div>
   );

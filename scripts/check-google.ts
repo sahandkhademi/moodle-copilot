@@ -1,5 +1,5 @@
 // Run: npx tsx scripts/check-google.ts
-// Mock-mode sync on 3 deadlines, a request-shape dump, and (if env vars are set) a live "list tools" call.
+// Mock-mode sync on 3 deadlines, a prompt dump, and (if env vars are set) a live MCP "list tools" call.
 const store = new Map<string, string>();
 (globalThis as any).localStorage = {
   getItem: (k: string) => store.get(k) ?? null,
@@ -13,7 +13,7 @@ const store = new Map<string, string>();
 
 const { MOCK_DEADLINES, MOCK_COURSES } = await import('../src/lib/data/mock');
 const { syncToGoogle, getSynced } = await import('../src/lib/google/sync');
-const { buildSyncRequest } = await import('../src/lib/google/zapier');
+const { buildSyncPrompt, toPromptItems } = await import('../src/lib/google/zapier');
 const { updateSettings } = await import('../src/lib/settings');
 
 const items = MOCK_DEADLINES.filter((d) => ['dl-log-hu7', 'dl-log-final', 'dl-prg-quiz'].includes(d.id)).map((deadline) => ({
@@ -28,21 +28,17 @@ console.log('--- mock sync (2nd run, expect exists) ---');
 console.log(await syncToGoogle(items, { calendar: true, tasks: true }));
 console.log('synced map:', await getSynced());
 
-console.log('--- request shape (2 deadlines, key never included) ---');
-const req = buildSyncRequest(
-  items.slice(0, 2).map((item) => ({ item, calendar: true, tasks: true })),
-  { url: 'https://mcp.zapier.com/api/mcp/s/EXAMPLE/mcp', token: 'ZAPIER_TOKEN' },
-);
-console.log(JSON.stringify(req, null, 2));
+console.log('--- prompt shape (2 deadlines) ---');
+console.log(buildSyncPrompt(toPromptItems(items.slice(0, 2).map((item) => ({ item, calendar: true, tasks: true })))));
 
 const env = ((globalThis as any).process?.env ?? {}) as Record<string, string | undefined>;
-const key = env.ANTHROPIC_API_KEY;
+const key = env.GEMINI_API_KEY;
 const url = env.ZAPIER_MCP_URL;
 if (key && url) {
   console.log('--- live: list tools (no writes) ---');
-  await updateSettings({ mockMode: false, anthropicApiKey: key, zapierMcpUrl: url, zapierMcpToken: env.ZAPIER_MCP_TOKEN ?? '' });
+  await updateSettings({ mockMode: false, geminiApiKey: key, zapierMcpUrl: url, zapierMcpToken: env.ZAPIER_MCP_TOKEN ?? '' });
   const { testZapier } = await import('../src/lib/google/zapier');
   console.log(await testZapier());
 } else {
-  console.log('--- live check skipped: ANTHROPIC_API_KEY and ZAPIER_MCP_URL not both set ---');
+  console.log('--- live check skipped: GEMINI_API_KEY and ZAPIER_MCP_URL not both set ---');
 }
