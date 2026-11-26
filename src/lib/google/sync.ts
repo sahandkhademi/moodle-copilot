@@ -71,7 +71,14 @@ export async function syncToGoogle(items: SyncItem[], opts: SyncOptions): Promis
         });
       }
     } else if (todo.length) {
-      for (const r of await runLiveSync(todo)) {
+      // Hard cap: the button must never spin forever.
+      const capped = await Promise.race([
+        runLiveSync(todo),
+        new Promise<SyncResult[]>((resolve) =>
+          setTimeout(() => resolve(todo.map((w) => ({ deadlineId: w.item.deadline.id, calendar: w.calendar ? 'failed' : 'skipped', tasks: w.tasks ? 'failed' : 'skipped', error: 'Google sync timed out. Try again.' }))), 75_000),
+        ),
+      ]);
+      for (const r of capped) {
         const prev = results.get(r.deadlineId)!;
         results.set(r.deadlineId, {
           deadlineId: r.deadlineId,

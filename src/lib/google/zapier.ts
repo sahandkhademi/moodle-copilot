@@ -3,6 +3,7 @@
 // onto Zapier's instruction-style tool params. Never throws out of runLiveSync / testZapier.
 import type { Content, GoogleGenAI, Part } from '@google/genai';
 import { relevantTools, toFunctionDeclarations } from './mcpTools';
+import { directSync } from './direct';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -178,6 +179,13 @@ function allFailed(work: Work[], error: string): SyncResult[] {
 
 const MAX_ROUNDS = 12;
 
+function withDeadline<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${what} timed out after ${Math.round(ms / 1000)} s`)), ms);
+    p.then((v) => (clearTimeout(t), resolve(v)), (e) => (clearTimeout(t), reject(e)));
+  });
+}
+
 /**
  * Gemini ↔ Zapier tool loop. We list the MCP tools ourselves and clean their schemas (Zapier's raw schemas have
  * $ref loops that Gemini rejects), then run each function call through the MCP client. Returns Gemini's final text.
@@ -191,7 +199,7 @@ export async function runToolLoop(ai: GoogleGenAI, mcp: Client, model: string, p
     const res = await ai.models.generateContent({
       model,
       contents,
-      config: { systemInstruction: SYSTEM, temperature: 0, tools: [{ functionDeclarations: declarations }] },
+      config: { systemInstruction: SYSTEM, temperature: 0, tools: [{ functionDeclarations: declarations }], abortSignal: AbortSignal.timeout(25_000) },
     });
     const fcs = res.functionCalls ?? [];
     if (!fcs.length) {
@@ -230,8 +238,12 @@ export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   let mcp: Client | undefined;
   try {
     const ai = await getGemini();
-    mcp = await connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined });
-    const text = await withModelFallback((model) => runToolLoop(ai, mcp!, model, buildSyncPrompt(toPromptItems(work))));
+    mcp = await withDeadline(connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined }), 15_000, 'Connecting to Zapier');
+    // Fast path: call Zapier's Calendar/Tasks tools directly, in parallel. Only if they're missing, let Gemini figure it out.
+    const { tools } = await withDeadline(mcp.listTools(), 15_000, 'Listing Zapier tools');
+    const direct = await directSync(mcp, tools, work);
+    if (direct) return direct;
+    const text = await withModelFallback((model) => withDeadline(runToolLoop(ai, mcp!, model, buildSyncPrompt(toPromptItems(work))), 90_000, 'Gemini'));
     const arr = parseJsonArray(text);
     if (!arr) return allFailed(work, `Unexpected reply from Gemini. ${text.slice(0, 120)}`.trim());
     const byId = new Map<string, Record<string, unknown>>();

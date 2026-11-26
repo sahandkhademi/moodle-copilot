@@ -30,10 +30,6 @@ assert.equal(JSON.stringify(s).includes('$defs'), false);
 console.log('sanitizer: no $ref / $defs left ✓');
 
 const key = process.env.GEMINI_API_KEY;
-if (!key) {
-  console.log('No GEMINI_API_KEY: skipping live Gemini check');
-  process.exit(0);
-}
 
 const created: Record<string, unknown>[] = [];
 function makeServer() {
@@ -48,6 +44,7 @@ function makeServer() {
   }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     created.push({ tool: req.params.name, args: req.params.arguments });
+    await new Promise((r) => setTimeout(r, 1500)); // a real Zapier action takes a moment
     const found = req.params.name.includes('find');
     return { content: [{ type: 'text', text: found ? JSON.stringify({ results: [] }) : JSON.stringify({ id: 'x' + created.length, status: 'created' }) }] };
   });
@@ -62,6 +59,30 @@ const httpServer = http.createServer(async (req, res) => {
 });
 await new Promise<void>((r) => httpServer.listen(0, '127.0.0.1', r));
 const url = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}/mcp`;
+// 0. Fast direct path: no Gemini, all calls in parallel.
+{
+  const { directSync } = await import('../src/lib/google/direct');
+  const mcp = await connectMcp({ url });
+  const { tools } = await mcp.listTools();
+  const mk = (id: string, title: string, due: string) => ({ item: { deadline: { id, courseId: 1, title, type: 'assignment', due }, course: { id: 1, shortname: 'LOG', fullname: 'VL / UE Logic', url: '' } }, calendar: true, tasks: true });
+  const work = [mk('d1', 'Homework 7', '2026-11-30T22:59:00Z'), mk('d2', 'Sheet 8', '2026-12-01T22:59:00Z'), mk('d3', 'Quiz 3', '2026-12-02T17:00:00Z')] as never[];
+  created.length = 0;
+  const t = Date.now();
+  const res = await directSync(mcp, tools, work);
+  console.log(`direct path: ${res?.length} items in ${Date.now() - t} ms →`, res?.map((r) => `${r.deadlineId}:${r.calendar}/${r.tasks}`).join(' '));
+  const cal = created.find((c) => String(c.tool).includes('calendar_create')) as { args: Record<string, unknown> };
+  console.log('calendar args sample:', JSON.stringify(cal.args));
+  assert.equal(res?.every((r) => r.calendar === 'created' && r.tasks === 'created'), true);
+  assert.equal(created.length, 6);
+  assert.match(String(cal.args.start__dateTime), /^2026-11-30T23:29:00$/);
+  console.log('direct path check passed ✓');
+  await mcp.close();
+}
+if (!key) {
+  console.log('No GEMINI_API_KEY: skipping live Gemini checks');
+  httpServer.close();
+  process.exit(0);
+}
 const ai = new GoogleGenAI({ apiKey: key });
 const model = process.env.GEMINI_MODEL ?? 'gemini-3.6-flash';
 
