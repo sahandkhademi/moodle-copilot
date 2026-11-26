@@ -35,11 +35,12 @@ const req = buildSyncRequest(
 );
 console.log(JSON.stringify(req, null, 2));
 
-const key = process.env.ANTHROPIC_API_KEY;
-const url = process.env.ZAPIER_MCP_URL;
+const env = ((globalThis as any).process?.env ?? {}) as Record<string, string | undefined>;
+const key = env.ANTHROPIC_API_KEY;
+const url = env.ZAPIER_MCP_URL;
 if (key && url) {
   console.log('--- live: list tools (no writes) ---');
-  await updateSettings({ mockMode: false, anthropicApiKey: key, zapierMcpUrl: url, zapierMcpToken: process.env.ZAPIER_MCP_TOKEN ?? '' });
+  await updateSettings({ mockMode: false, anthropicApiKey: key, zapierMcpUrl: url, zapierMcpToken: env.ZAPIER_MCP_TOKEN ?? '' });
   const { testZapier } = await import('../src/lib/google/zapier');
   console.log(await testZapier());
 } else {
