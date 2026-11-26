@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Design tokens: one accent (warm orange, a nod to Moodle), neutral slate surfaces. */
+@theme {
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html, body, #root { height: 100%; }
+body { @apply bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased; }

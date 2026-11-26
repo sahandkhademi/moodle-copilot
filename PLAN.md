@@ -38,9 +38,9 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 
 ## Phase 1 — Foundation (must have)
 
-- [ ] **1.1 Scaffold**: WXT + React + TS + Tailwind; side panel opens from the toolbar icon; loads unpacked in `chrome://extensions`
-- [ ] **1.2 Settings page**: Moodle base URL, Claude API key, mock-mode toggle, language (DE/EN)
-- [ ] **1.3 Mock data layer**: `src/data/mock.ts` with ~5 courses (incl. *Logik*), grades, attendance, 10+ deadlines spread over the next 3 weeks. Same TypeScript interface as the real layer
+- [x] **1.1 Scaffold**: WXT + React + TS + Tailwind; side panel opens from the toolbar icon; loads unpacked in `chrome://extensions`
+- [x] **1.2 Settings page**: Moodle base URL, Claude API key, mock-mode toggle, language (DE/EN)
+- [x] **1.3 Mock data layer**: `src/data/mock.ts` with ~5 courses (incl. *Logik*), grades, attendance, 10+ deadlines spread over the next 3 weeks. Same TypeScript interface as the real layer
 - [ ] **1.4 Moodle spike** (time-box 45 min): on the real Moodle, confirm which calls work with the session:
   - `core_course_get_enrolled_courses_by_timeline_classification` → courses
   - `core_calendar_get_action_events_by_timesort` → deadlines

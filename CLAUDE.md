@@ -17,3 +17,9 @@ Chrome side-panel extension for Yotkao's Moodle: AI chat over your Moodle data, 
 
 ## Stack
 WXT + React + TypeScript + Tailwind, Manifest V3, `chrome.sidePanel`. Claude via `@anthropic-ai/sdk` (model `claude-opus-5-5`) with tool use. Google Calendar and Google Tasks via **Zapier MCP**, which Claude calls through the API's MCP connector (no Google OAuth, no .ics files).
+
+## Parallel branches
+Features are built on separate branches (`feat/chat`, `feat/dashboard`, `feat/google-zapier`, `feat/notifications`, `feat/moodle-data`) and merged into `main`.
+- Shared contracts live on main and are only changed there: `src/lib/types.ts`, `storage.ts` (KEYS), `settings.ts`, `grading.ts`, `attendance.ts`, `data/index.ts`, `sidepanel/App.tsx`.
+- Each branch stays in its own folders. If a branch truly needs a contract change, keep it additive (new optional field / new key) and say so in the commit message.
+- Check before committing: `npm run compile && npm run build`.

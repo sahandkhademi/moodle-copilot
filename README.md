@@ -9,4 +9,28 @@ FestDev 26 hackathon project: a Chrome side-panel assistant for Yotkao's Moodle.
 See [PLAN.md](PLAN.md) for the roadmap.
 
 ## Run locally
-_(filled in after step 1.1 of the plan)_
+
+```bash
+npm install
+npm run build        # → .output/chrome-mv3
+```
+
+1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick `.output/chrome-mv3`.
+2. Click the toolbar icon → the side panel opens.
+3. Settings → paste a Claude API key. Demo data is on by default.
+
+`npm run dev` opens a separate Chrome with the extension loaded and hot reload.
+
+## Code map
+
+| Path | What |
+|---|---|
+| `src/lib/types.ts` | Shared data model (courses, grades, attendance, deadlines) |
+| `src/lib/data/` | `getData()` → mock or real Moodle, with fallback to mock |
+| `src/lib/grading.ts` | Austrian 1–5 math: standing, "what do I need", what-if |
+| `src/lib/attendance.ts` | Absence limit math |
+| `src/lib/settings.ts`, `storage.ts` | Settings + shared storage keys |
+| `src/lib/ai/client.ts` | Claude client |
+| `src/lib/google/sync.ts` | Google Calendar/Tasks via Zapier MCP |
+| `src/components/*` | Chat, Dashboard, Settings, Google buttons |
+| `src/entrypoints/` | Side panel + background service worker |
