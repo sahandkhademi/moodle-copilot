@@ -55,7 +55,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
   - Chat UI: streaming answers, markdown, suggested-question chips ("What's due this week?", "How did I do in Logik?", "Am I at risk anywhere for attendance?")
   - Claude tool-use loop over the data-layer functions
   - System prompt: student assistant, answers briefly, replies in the user's language, cites the course and links to the Moodle page
-- [ ] **2.2 Deadline dashboard**
+- [x] **2.2 Deadline dashboard**
   - Timeline grouped into *Overdue / Today / This week / Later*, color-coded by urgency
   - Course filter, "mark done" (local), countdown badges
   - Toolbar icon badge = number of deadlines in the next 48 h
@@ -75,12 +75,12 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 
 ## Phase 4 — Committed extras (must ship, all in the demo)
 
-- [ ] **4.1 Grade calculator** — "What do I need on the final to get a 2?"
+- [x] **4.1 Grade calculator** — "What do I need on the final to get a 2?"
   - Austrian scale: 1 Sehr gut, 2 Gut, 3 Befriedigend, 4 Genügend, 5 Nicht genügend. Percentage cut-offs are configurable per course (default 1 ≥ 89 %, 2 ≥ 76 %, 3 ≥ 63 %, 4 ≥ 50 %)
   - Uses the course's grade items and weights from Moodle and does the math **in code** (a Claude tool `calculateNeededScore`), so the numbers are always right. Claude only explains the result
   - Answers like: "You need 34/50 (68 %) on the final for a 2. A 1 is no longer possible."
   - Small "what if" slider on the course's grade card in the dashboard
-- [ ] **4.2 Absence warning**
+- [x] **4.2 Absence warning**
   - Per course: absences so far, the limit (default 20 % of sessions, configurable), and how many absences are left
   - Color states: 🟢 safe · 🟠 one or two absences left · 🔴 over the limit
   - Shows up by itself: a banner at the top of the dashboard, mentioned by the chat when relevant, and a Chrome notification when a course turns 🟠
