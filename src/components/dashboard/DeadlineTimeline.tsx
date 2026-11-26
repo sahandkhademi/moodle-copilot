@@ -1,8 +1,10 @@
+// Moodle "Timeline" block.
 import { useMemo, useState } from 'react';
+import { Check, Search } from 'lucide-react';
 import type { Course, Deadline } from '@/lib/types';
+import { ActivityIcon, Badge, Block, Button, Input, MLink, Select, cx } from '@/components/ui/moodle';
 import { AddToGoogleButton } from '@/components/google/AddToGoogleButton';
-import type { Lang, T } from './i18n';
-import { bucketOf, countdown, courseColor, STRIPE, TYPE_ICON, urgency, type Bucket } from './util';
+import { actionLabel, dateHeading, inRange, isOverdue, RANGE_OPTIONS, subtitle, timeOf, TYPE_LABEL, type RangeFilter } from './util';
 
 interface Props {
   deadlines: Deadline[];
@@ -10,106 +12,156 @@ interface Props {
   done: Set<string>;
   onToggleDone(id: string): void;
   now: Date;
-  lang: Lang;
-  t: T;
 }
 
-const ORDER: Bucket[] = ['overdue', 'today', 'week', 'later'];
-const BUCKET_TONE: Record<Bucket, string> = {
-  overdue: 'text-red-600 dark:text-red-400',
-  today: 'text-orange-600 dark:text-orange-400',
-  week: 'text-slate-600 dark:text-slate-300',
-  later: 'text-slate-500',
-};
+const STEP = 5;
 
-export default function DeadlineTimeline({ deadlines, courses, done, onToggleDone, now, lang, t }: Props) {
-  const [filter, setFilter] = useState<number | null>(null);
+export default function DeadlineTimeline({ deadlines, courses, done, onToggleDone, now }: Props) {
+  const [range, setRange] = useState<RangeFilter>('7d');
+  const [sort, setSort] = useState<'dates' | 'courses'>('dates');
+  const [query, setQuery] = useState('');
+  const [shown, setShown] = useState(STEP);
   const [showDone, setShowDone] = useState(false);
+
   const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
-
   const isDone = (d: Deadline) => done.has(d.id) || !!d.submitted;
-  const filtered = deadlines.filter((d) => filter == null || d.courseId === filter);
-  const open = filtered.filter((d) => !isDone(d));
-  const finished = filtered.filter(isDone);
-  const groups = ORDER.map((b) => ({ b, items: open.filter((d) => bucketOf(d.due, now) === b) })).filter((g) => g.items.length);
 
-  const chipBase = 'shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors';
-  const chipOn = 'bg-slate-900 text-white dark:bg-white dark:text-slate-900';
-  const chipOff = 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700';
+  const matching = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return deadlines
+      .filter((d) => inRange(d, range, now))
+      .filter((d) => {
+        if (!q) return true;
+        const label = d.meeting ? 'zoom meeting' : TYPE_LABEL[d.type];
+        return `${d.title} ${label} ${courseById.get(d.courseId)?.fullname ?? ''}`.toLowerCase().includes(q);
+      })
+      .sort((a, b) => {
+        if (sort === 'courses') {
+          const c = (courseById.get(a.courseId)?.fullname ?? '').localeCompare(courseById.get(b.courseId)?.fullname ?? '');
+          if (c) return c;
+        }
+        return a.due.localeCompare(b.due);
+      });
+  }, [deadlines, range, query, sort, now, courseById]);
 
-  const row = (d: Deadline) => {
+  const doneCount = matching.filter(isDone).length;
+  const visible = matching.filter((d) => showDone || !isDone(d));
+  const page = visible.slice(0, shown);
+
+  const groups: { key: string; heading: string; items: Deadline[] }[] = [];
+  for (const d of page) {
     const course = courseById.get(d.courseId);
-    const col = courseColor(d.courseId);
-    const checked = isDone(d);
-    const u = urgency(d.due, now);
-    return (
-      <li
-        key={d.id}
-        className={`group relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-2 transition-all hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 ${checked ? 'opacity-60' : ''}`}
-      >
-        <span className={`absolute inset-y-0 left-0 w-1 ${STRIPE[u]}`} />
-        <input
-          type="checkbox"
-          checked={checked}
-          disabled={!!d.submitted && !done.has(d.id)}
-          onChange={() => onToggleDone(d.id)}
-          title={t('markDone')}
-          aria-label={t('markDone')}
-          className="h-4 w-4 shrink-0 cursor-pointer accent-brand-500"
-        />
-        <button
-          onClick={() => d.url && window.open(d.url, '_blank', 'noopener')}
-          className="min-w-0 flex-1 cursor-pointer text-left"
-        >
-          <div className="flex items-center gap-1.5">
-            <span className={`rounded px-1.5 py-px text-[10px] font-semibold tracking-wide ${col.pill}`}>{course?.shortname ?? '?'}</span>
-            <span className="text-xs" aria-hidden>{TYPE_ICON[d.type]}</span>
-          </div>
-          <div className={`mt-0.5 truncate text-sm font-medium ${checked ? 'line-through' : ''}`}>{d.title}</div>
-          <div className={`text-xs ${u === 'overdue' ? 'font-medium text-red-600 dark:text-red-400' : u === 'soon' ? 'text-orange-600 dark:text-orange-400' : 'text-slate-500'}`}>
-            {countdown(d.due, now, t, lang)}
-          </div>
-        </button>
-        <AddToGoogleButton item={{ deadline: d, course }} />
-      </li>
-    );
-  };
+    const key = sort === 'courses' ? String(d.courseId) : new Date(d.due).toDateString();
+    const heading = sort === 'courses' ? (course?.fullname ?? 'Other') : dateHeading(d.due);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(d);
+    else groups.push({ key, heading, items: [d] });
+  }
 
   return (
-    <div className="space-y-3">
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
-        <button onClick={() => setFilter(null)} className={`${chipBase} ${filter == null ? chipOn : chipOff}`}>
-          {t('all')}
-        </button>
-        {courses.map((c) => (
-          <button key={c.id} onClick={() => setFilter(filter === c.id ? null : c.id)} className={`${chipBase} ${filter === c.id ? chipOn : chipOff}`}>
-            {c.shortname}
-          </button>
-        ))}
+    <Block title="Timeline" id="timeline">
+      <div className="grid grid-cols-2 gap-2">
+        <Select
+          aria-label="Filter timeline by date"
+          value={range}
+          onChange={(e) => {
+            setRange(e.target.value as RangeFilter);
+            setShown(STEP);
+          }}
+        >
+          {RANGE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Sort timeline items"
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value as 'dates' | 'courses');
+            setShown(STEP);
+          }}
+        >
+          <option value="dates">Sort by dates</option>
+          <option value="courses">Sort by courses</option>
+        </Select>
+        <div className="relative col-span-2">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            type="search"
+            aria-label="Search by activity type or name"
+            placeholder="Search by activity type or name"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setShown(STEP);
+            }}
+            className="pl-8"
+          />
+        </div>
       </div>
 
-      {groups.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-300 py-6 text-center text-sm text-slate-500 dark:border-slate-700">{t('empty')}</div>
-      )}
+      <hr className="-mx-4 mt-4 border-line" />
 
-      {groups.map(({ b, items }) => (
-        <section key={b} className="space-y-1.5">
-          <h3 className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider ${BUCKET_TONE[b]}`}>
-            {t(b)}
-            <span className="rounded-full bg-slate-100 px-1.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800">{items.length}</span>
-          </h3>
-          <ul className="space-y-1.5">{items.map(row)}</ul>
-        </section>
-      ))}
-
-      {finished.length > 0 && (
+      {visible.length === 0 ? (
+        <p className="py-6 text-center text-muted">{deadlines.length === 0 ? 'No upcoming activities due.' : 'No activities match your filters.'}</p>
+      ) : (
         <div>
-          <button onClick={() => setShowDone((v) => !v)} className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-            {showDone ? `▾ ${t('hideDone')}` : `▸ ${t('doneN', { n: finished.length })}`}
-          </button>
-          {showDone && <ul className="mt-1.5 space-y-1.5">{finished.map(row)}</ul>}
+          {groups.map((g) => (
+            <div key={g.key}>
+              <h3 className="mb-0 mt-4 text-[0.9375rem] font-bold text-ink">{g.heading}</h3>
+              <ul className="mt-1">
+                {g.items.map((d) => (
+                  <Row key={d.id} d={d} course={courseById.get(d.courseId)} now={now} done={isDone(d)} manual={done.has(d.id)} onToggleDone={() => onToggleDone(d.id)} />
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       )}
-    </div>
+
+      {visible.length > shown && (
+        <div className="mt-4 text-center">
+          <Button variant="light" onClick={() => setShown((n) => n + STEP)}>Show more activities</Button>
+        </div>
+      )}
+      {doneCount > 0 && (
+        <div className="mt-3 text-center text-[0.8125rem]">
+          <button className="text-brand-500 hover:text-brand-700 hover:underline" onClick={() => setShowDone((v) => !v)}>
+            {showDone ? 'Hide done' : `Show done (${doneCount})`}
+          </button>
+        </div>
+      )}
+    </Block>
+  );
+}
+
+function Row({ d, course, now, done, manual, onToggleDone }: { d: Deadline; course?: Course; now: Date; done: boolean; manual: boolean; onToggleDone(): void }) {
+  const overdue = isOverdue(d, now) && !done;
+  return (
+    <li className={cx('flex gap-3 border-b border-line py-3 last:border-b-0', done && 'opacity-60')}>
+      <div className="w-11 shrink-0 pt-0.5 text-muted tabular-nums">{timeOf(d.due)}</div>
+      <div className="pt-0.5">
+        <ActivityIcon type={d.type} meeting={d.meeting} size={26} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="leading-snug">
+          <MLink href={d.url}>{d.title}</MLink>
+          {overdue && <Badge tone="danger" className="ml-2 align-middle">Overdue</Badge>}
+        </div>
+        <div className="text-[0.8125rem] leading-snug text-muted">{subtitle(d, course?.fullname)}</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => d.url && window.open(d.url, '_blank', 'noopener')}>
+            {actionLabel(d)}
+          </Button>
+          {!done && course && <AddToGoogleButton item={{ deadline: d, course }} compact />}
+          {(!done || manual) && (
+            <button onClick={onToggleDone} className="inline-flex items-center gap-1 text-[0.8125rem] text-muted hover:text-ink">
+              <Check className="h-3.5 w-3.5" />
+              {done ? 'Mark as not done' : 'Mark as done'}
+            </button>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
