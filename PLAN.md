@@ -1,8 +1,8 @@
 # Moodle Copilot — Hackathon Plan (FestDev 26)
 
-> Working name. Alternatives: *StudyPilot*, *Moodle Mate*, *Yotkao Buddy*.
+> Working name. Alternatives: *StudyPilot*, *Moodle Mate*, *JKU Buddy*.
 
-**One-liner:** A Chrome side-panel extension for Yotkao's Moodle. Ask it questions ("How did I do on the last logic test?"), see every upcoming deadline in one dashboard, and push deadlines to Google Calendar and Google Tasks.
+**One-liner:** A Chrome side-panel extension for JKU Moodle. Ask it questions ("How did I do on the last logic test?"), see every upcoming deadline in one dashboard, and push deadlines to Google Calendar and Google Tasks.
 
 **Ground rule: the demo comes first.** It only needs to run on one laptop. Every feature has a **mock-data fallback**, so the live demo never depends on Moodle, Google or the network being well-behaved.
 
@@ -17,18 +17,19 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 | Extension framework | **WXT** (wxt.dev) + **React** + **TypeScript** + **Tailwind** | Manifest V3, side-panel support, hot reload, minimal setup |
 | UI surface | `chrome.sidePanel` (stays open next to Moodle) + a full-tab dashboard page | Matches "sidebar thing on the side" |
 | Moodle data | Reuse the **logged-in browser session**: call Moodle's own AJAX endpoint `/lib/ajax/service.php?sesskey=…` (the one Moodle's own UI uses). Fall back to scraping HTML pages (grades, attendance) | No API token or admin access needed |
-| AI | **Claude API** (`@anthropic-ai/sdk`, model `claude-opus-5-5`, low effort for snappy chat) with **tool use**: the model calls `getGrades`, `getDeadlines`, `getAttendance`, … and we run them against Moodle | Answers come from real data, not guesses |
-| API key | Pasted into the extension's options page, kept in `chrome.storage.local` | Fine for a local demo. **Never commit it** |
-| Google | **Zapier MCP**: Google Calendar + Google Tasks actions enabled once on zapier.com. Claude reaches them through the API's **MCP connector** (`mcp_servers` + `mcp_toolset`, beta `mcp-client-2025-11-20`) | No Google Cloud project, no OAuth screens, no files to download. The user clicks, it shows up in their calendar |
+| AI | **Gemini API** (`@google/genai`, model `gemini-3.8-flash`) with **function calling**: the model calls `getGrades`, `getDeadlines`, `getAttendance`, … and we run them against Moodle | Answers come from real data, not guesses. Google DevFest: Gemini credits |
+| API key | Gemini key pasted into Settings, kept in `chrome.storage.local` | Fine for a local demo. **Never commit it** |
+| Look | Copies JKU Moodle (boost_union_jku colors, Moodle Timeline layout, lucide icons, no emojis), English only | Feels like part of Moodle |
+| Google | **Zapier MCP**: Google Calendar + Google Tasks actions enabled once on zapier.com. The extension connects with the MCP TypeScript client and Gemini picks and fills the Zapier tools | No Google Cloud project, no OAuth screens, no files to download. The user clicks, it shows up in their calendar |
 | Google fallback | None in the UI. If Zapier fails during the demo, switch to mock mode, which fakes a "✓ added" | The user never downloads anything or does a manual step |
 | Demo safety | `MOCK_MODE` toggle with realistic seed data (courses, grades, attendance, deadlines) | The demo can't break |
 
 ```
 ┌──────────── Chrome ────────────┐
 │ Moodle tab   │  Side panel      │
-│ (logged in)  │  ├─ Chat         │──► Claude API (tool use)
+│ (logged in)  │  ├─ Chat         │──► Gemini API (function calling)
 │              │  ├─ Dashboard    │
-│              │  └─ Settings     │   (Claude ──► Zapier MCP ──► Google Calendar / Tasks)
+│              │  └─ Settings     │   (Gemini ──► Zapier MCP ──► Google Calendar / Tasks)
 │  content     │                  │
 │  script ◄────┤ background SW    │──► Moodle AJAX / HTML (session cookie)
 └──────────────┴──────────────────┘
@@ -39,7 +40,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 ## Phase 1 — Foundation (must have)
 
 - [x] **1.1 Scaffold**: WXT + React + TS + Tailwind; side panel opens from the toolbar icon; loads unpacked in `chrome://extensions`
-- [x] **1.2 Settings page**: Moodle base URL, Claude API key, mock-mode toggle, language (DE/EN)
+- [x] **1.2 Settings page**: Moodle base URL, Gemini API key, mock-mode toggle
 - [x] **1.3 Mock data layer**: `src/data/mock.ts` with ~5 courses (incl. *Logik*), grades, attendance, 10+ deadlines spread over the next 3 weeks. Same TypeScript interface as the real layer
 - [ ] **1.4 Moodle spike** (time-box 45 min): on the real Moodle, confirm which calls work with the session:
   - `core_course_get_enrolled_courses_by_timeline_classification` → courses
@@ -51,9 +52,9 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 
 ## Phase 2 — The two hero features
 
-- [x] **2.1 AI chat in the side panel**
+- [ ] **2.1 AI chat in the side panel**
   - Chat UI: streaming answers, markdown, suggested-question chips ("What's due this week?", "How did I do in Logik?", "Am I at risk anywhere for attendance?")
-  - Claude tool-use loop over the data-layer functions
+  - Gemini function-calling loop over the data-layer functions
   - System prompt: student assistant, answers briefly, replies in the user's language, cites the course and links to the Moodle page
 - [x] **2.2 Deadline dashboard**
   - Timeline grouped into *Overdue / Today / This week / Later*, color-coded by urgency
@@ -65,7 +66,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 Principle: **one click or one sentence, and it's in Google.** No downloads, no copy-paste, no extra tabs.
 
 - [x] **3.1 Zapier setup (one time, ~10 min)**: on zapier.com, create an MCP server and enable *Google Calendar: Create Detailed Event*, *Google Calendar: Find Event* and *Google Tasks: Create Task*, connected to our Google account. Paste the MCP server URL and token into the extension's settings
-- [x] **3.2 MCP connector in the chat**: add the Zapier server to the Claude request (`mcp_servers` + `mcp_toolset`, beta `mcp-client-2025-11-20`). Check that Claude can list and call the Zapier tools
+- [ ] **3.2 MCP connector in the chat**: connect to the Zapier server with the MCP client and let Gemini call its tools. Check that it can list and call the Zapier tools
 - [x] **3.3 Ask the chat to do it**: "Put my logic exam in my calendar", "Make tasks for everything due this week". Show a confirmation card listing what will be created, then one tap writes it
 - [x] **3.4 One-click buttons on the dashboard**: "📅 Add to Calendar" per deadline and "Sync all to Calendar + Tasks" at the top. They run the same Zapier tools, so no typing is needed
 - [x] **3.5 No duplicates**: store Moodle-event-ID → "synced" locally, and use *Find Event* before creating. Show a ✓ on deadlines that are already synced
@@ -77,7 +78,7 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 
 - [x] **4.1 Grade calculator** — "What do I need on the final to get a 2?"
   - Austrian scale: 1 Sehr gut, 2 Gut, 3 Befriedigend, 4 Genügend, 5 Nicht genügend. Percentage cut-offs are configurable per course (default 1 ≥ 89 %, 2 ≥ 76 %, 3 ≥ 63 %, 4 ≥ 50 %)
-  - Uses the course's grade items and weights from Moodle and does the math **in code** (a Claude tool `calculateNeededScore`), so the numbers are always right. Claude only explains the result
+  - Uses the course's grade items and weights from Moodle and does the math **in code** (a Gemini tool `calculate_needed_score`), so the numbers are always right. Gemini only explains the result
   - Answers like: "You need 34/50 (68 %) on the final for a 2. A 1 is no longer possible."
   - Small "what if" slider on the course's grade card in the dashboard
 - [x] **4.2 Absence warning**
@@ -97,9 +98,9 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 ## Phase 5 — Nice to have (pick by time left, in this order)
 
 - [ ] **5.1 Page-aware context** — the side panel knows which Moodle page you're on: "Summarize this assignment", "What does this task actually want?"
-- [ ] **5.2 Study planner** — before an exam, Claude proposes study blocks and puts them in free slots in Google Calendar
+- [ ] **5.2 Study planner** — before an exam, Gemini proposes study blocks and puts them in free slots in Google Calendar
 - [ ] **5.3 Morning briefing** — one card: today's classes, what's due, new grades, new announcements
-- [ ] **5.4 Course-material Q&A** — ask about a lecture PDF ("Explain slide 12 of week 5"); Claude reads the PDF as a document
+- [ ] **5.4 Course-material Q&A** — ask about a lecture PDF ("Explain slide 12 of week 5"); Gemini reads the PDF
 - [ ] **5.5 Quiz me** — generate flashcards / practice questions from course material
 - [ ] **5.6 Email the teacher** — draft a polite extension request or question in German, shown for review, never sent automatically
 - [ ] **5.7 Workload heatmap** — calendar heatmap of how busy each week is

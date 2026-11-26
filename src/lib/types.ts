@@ -56,6 +56,8 @@ export interface Deadline {
   url?: string;
   description?: string;
   submitted?: boolean;
+  /** Online meeting (Zoom) — shown with the orange meeting icon. */
+  meeting?: boolean;
 }
 
 export interface DataSource {

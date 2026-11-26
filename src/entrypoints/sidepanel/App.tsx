@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Bell } from 'lucide-react';
 import ChatView from '@/components/chat/ChatView';
 import DashboardView from '@/components/dashboard/DashboardView';
 import SettingsView from '@/components/settings/SettingsView';
@@ -8,29 +9,29 @@ import { getItem, KEYS, watchItem, type FocusRequest } from '@/lib/storage';
 
 type Tab = FocusRequest['tab'];
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'chat', label: 'Chat', icon: '💬' },
-  { id: 'dashboard', label: 'Dashboard', icon: '📅' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' },
+// Moodle-style primary navigation (like "Home  Dashboard  My courses" in the top bar).
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'chat', label: 'Assistant' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'settings', label: 'Settings' },
 ];
+
+/** Wordmark in Moodle's style: bold, black, all caps. */
+function Wordmark() {
+  return (
+    <div className="flex items-baseline gap-1.5 select-none">
+      <span className="text-[1.35rem] font-black uppercase leading-none tracking-tight text-ink">Moodle</span>
+      <span className="text-[0.95rem] font-semibold leading-none text-brand-500">Copilot</span>
+    </div>
+  );
+}
 
 export default function App() {
   const [settings] = useSettings();
   useSidepanelPresence();
-  const [tab, setTab] = useState<Tab>('chat');
+  const [tab, setTab] = useState<Tab>('dashboard');
   const [focus, setFocus] = useState<FocusRequest | null>(null);
-
-  // Dark mode
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const dark = settings.darkMode === 'dark' || (settings.darkMode === 'system' && mq.matches);
-      document.documentElement.classList.toggle('dark', dark);
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, [settings.darkMode]);
+  const [unseen, setUnseen] = useState(0);
 
   // Focus requests (e.g. clicking a "new grade" notification opens the right tab)
   useEffect(() => {
@@ -44,18 +45,41 @@ export default function App() {
     return watchItem(KEYS.focus, handle);
   }, []);
 
+  useEffect(() => {
+    const apply = (v: unknown) => setUnseen(Array.isArray(v) ? v.length : 0);
+    getItem<string[]>(KEYS.unseenGrades, []).then(apply);
+    return watchItem(KEYS.unseenGrades, apply);
+  }, []);
+
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="grid h-7 w-7 place-items-center rounded-lg bg-brand-500 text-sm font-bold text-white">M</div>
-          <span className="font-semibold tracking-tight">Moodle Copilot</span>
+    <div className="flex h-full flex-col bg-surface">
+      <header className="border-b border-line bg-surface shadow-[0_2px_4px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center justify-between px-4 pt-3 pb-1">
+          <Wordmark />
+          <div className="flex items-center gap-3">
+            {settings.mockMode && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-muted">Demo data</span>}
+            <button className="relative text-ink" title="Notifications" onClick={() => setTab('dashboard')}>
+              <Bell className="h-5 w-5" strokeWidth={2} />
+              {unseen > 0 && (
+                <span className="absolute -right-2 -top-1.5 rounded-sm bg-danger px-1 text-[0.65rem] font-bold leading-4 text-white">{unseen}</span>
+              )}
+            </button>
+          </div>
         </div>
-        {settings.mockMode && (
-          <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-700/20 dark:text-brand-500">
-            Demo data
-          </span>
-        )}
+        <nav className="flex gap-1 px-2">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`relative px-2.5 py-2.5 text-[0.9375rem] font-semibold transition-colors ${
+                tab === t.id ? 'text-ink' : 'text-ink/80 hover:text-ink'
+              }`}
+            >
+              {t.label}
+              {tab === t.id && <span className="absolute inset-x-1.5 bottom-0 h-[3px] bg-brand-500" />}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="min-h-0 flex-1 overflow-hidden">
@@ -70,21 +94,6 @@ export default function App() {
           <SettingsView />
         </div>
       </main>
-
-      <nav className="grid grid-cols-3 border-t border-slate-200 dark:border-slate-800">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex flex-col items-center gap-0.5 py-2 text-xs transition-colors ${
-              tab === t.id ? 'text-brand-600 dark:text-brand-500' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <span className="text-base leading-none">{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }

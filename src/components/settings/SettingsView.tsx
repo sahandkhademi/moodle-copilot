@@ -1,28 +1,44 @@
 import { useState, type ReactNode } from 'react';
+import { Check } from 'lucide-react';
 import { useSettings, type Settings } from '@/lib/settings';
 import { DemoTools } from '@/components/demo/DemoTools';
 import { MoodleTest } from '@/components/moodle/MoodleTest';
 import { ZapierTest } from '@/components/google/ZapierTest';
+import { Block, Input } from '@/components/ui/moodle';
 
 function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="block font-semibold">{label}</span>
       {children}
-      {hint && <span className="block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="block text-[0.8125rem] text-muted">{hint}</span>}
     </label>
   );
 }
 
-const input =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900';
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
-      {children}
-    </section>
+    <label className="flex cursor-pointer items-start justify-between gap-3">
+      <span>
+        <span className="block font-semibold">{label}</span>
+        {hint && <span className="block text-[0.8125rem] text-muted">{hint}</span>}
+      </span>
+      {/* Moodle-style switch */}
+      <span className="relative mt-0.5 inline-flex shrink-0">
+        <input type="checkbox" className="peer sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span className="h-5 w-9 rounded-full border border-[#8f959e] bg-white transition-colors peer-checked:border-brand-500 peer-checked:bg-brand-500" />
+        <span className="absolute left-[3px] top-[3px] h-3.5 w-3.5 rounded-full bg-[#8f959e] transition-transform peer-checked:translate-x-4 peer-checked:bg-white" />
+      </span>
+    </label>
+  );
+}
+
+function Percent({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+  return (
+    <div className="relative">
+      <Input className="pr-7" type="number" min={0} max={100} defaultValue={value} onBlur={(e) => onCommit(Number(e.target.value))} />
+      <span className="pointer-events-none absolute right-2.5 top-1.5 text-muted">%</span>
+    </div>
   );
 }
 
@@ -38,96 +54,65 @@ export default function SettingsView() {
   };
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-4 px-4 py-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <span className={`text-xs text-emerald-600 transition-opacity ${saved ? 'opacity-100' : 'opacity-0'}`}>Saved ✓</span>
+        <h1 className="text-[1.75rem] font-bold leading-tight">Settings</h1>
+        <span className={`flex items-center gap-1 text-[0.8125rem] text-success transition-opacity ${saved ? 'opacity-100' : 'opacity-0'}`}>
+          <Check className="h-4 w-4" /> Saved
+        </span>
       </div>
 
-      <Section title="Demo">
-        <label className="flex items-center justify-between gap-3">
-          <span>
-            <span className="block text-sm font-medium">Demo data (mock mode)</span>
-            <span className="block text-xs text-slate-500">Seeded courses and grades. Google writes are faked.</span>
-          </span>
-          <input type="checkbox" className="h-5 w-5 accent-brand-500" checked={s.mockMode} onChange={(e) => set({ mockMode: e.target.checked })} />
-        </label>
-        <DemoTools />
-      </Section>
-
-      <Section title="Moodle">
-        <Field label="Moodle URL" hint="Log in to Moodle in this browser. Copilot uses that session.">
-          <input className={input} placeholder="https://moodle.yotkao.at" defaultValue={s.moodleUrl} onBlur={(e) => set({ moodleUrl: e.target.value.trim().replace(/\/$/, '') })} />
-        </Field>
-        <MoodleTest />
-      </Section>
-
-      <Section title="AI">
-        <Field label="Claude API key" hint="Stored only on this computer.">
-          <input className={input} type="password" placeholder="sk-ant-…" defaultValue={s.anthropicApiKey} onBlur={(e) => set({ anthropicApiKey: e.target.value.trim() })} />
-        </Field>
-        <Field label="Language">
-          <select className={input} value={s.language} onChange={(e) => set({ language: e.target.value as Settings['language'] })}>
-            <option value="de">Deutsch</option>
-            <option value="en">English</option>
-          </select>
-        </Field>
-        <label className="flex items-center justify-between">
-          <span className="text-sm font-medium">Read answers aloud</span>
-          <input type="checkbox" className="h-5 w-5 accent-brand-500" checked={s.voiceReadAloud} onChange={(e) => set({ voiceReadAloud: e.target.checked })} />
-        </label>
-      </Section>
-
-      <Section title="Google Calendar & Tasks (Zapier)">
-        <Field label="Zapier MCP server URL" hint={<>From mcp.zapier.com, with Google Calendar and Google Tasks actions enabled.</>}>
-          <input className={input} placeholder="https://mcp.zapier.com/api/mcp/…" defaultValue={s.zapierMcpUrl} onBlur={(e) => set({ zapierMcpUrl: e.target.value.trim() })} />
-        </Field>
-        <Field label="Zapier token (optional)">
-          <input className={input} type="password" defaultValue={s.zapierMcpToken} onBlur={(e) => set({ zapierMcpToken: e.target.value.trim() })} />
-        </Field>
-        <ZapierTest />
-      </Section>
-
-      <Section title="Grading">
-        <div className="grid grid-cols-4 gap-2">
-          {([1, 2, 3, 4] as const).map((n) => (
-            <Field key={n} label={`${n} from`}>
-              <div className="relative">
-                <input
-                  className={input + ' pr-6'}
-                  type="number"
-                  min={0}
-                  max={100}
-                  defaultValue={s.gradeCutoffs[n]}
-                  onBlur={(e) => set({ gradeCutoffs: { ...s.gradeCutoffs, [n]: Number(e.target.value) } })}
-                />
-                <span className="pointer-events-none absolute right-2 top-2 text-sm text-slate-400">%</span>
-              </div>
-            </Field>
-          ))}
+      <Block title="Demo">
+        <div className="space-y-3">
+          <Toggle label="Demo data" hint="Sample courses and grades. Google writes are simulated." checked={s.mockMode} onChange={(v) => set({ mockMode: v })} />
+          <DemoTools />
         </div>
-        <Field label="Absence limit" hint="Share of all sessions you may miss, unless the course says otherwise.">
-          <div className="relative">
-            <input
-              className={input + ' pr-6'}
-              type="number"
-              min={0}
-              max={100}
-              defaultValue={Math.round(s.absenceLimit * 100)}
-              onBlur={(e) => set({ absenceLimit: Number(e.target.value) / 100 })}
-            />
-            <span className="pointer-events-none absolute right-2 top-2 text-sm text-slate-400">%</span>
-          </div>
-        </Field>
-      </Section>
+      </Block>
 
-      <Section title="Appearance">
-        <select className={input} value={s.darkMode} onChange={(e) => set({ darkMode: e.target.value as Settings['darkMode'] })}>
-          <option value="system">Follow system</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </Section>
+      <Block title="Moodle">
+        <div className="space-y-3">
+          <Field label="Moodle URL" hint="Log in to Moodle in this browser. Copilot uses that session.">
+            <Input placeholder="https://moodle.jku.at" defaultValue={s.moodleUrl} onBlur={(e) => set({ moodleUrl: e.target.value.trim().replace(/\/$/, '') })} />
+          </Field>
+          <MoodleTest />
+        </div>
+      </Block>
+
+      <Block title="Assistant">
+        <div className="space-y-3">
+          <Field label="Gemini API key" hint="From Google AI Studio. Stored only on this computer.">
+            <Input type="password" placeholder="AIza… or AQ.…" defaultValue={s.geminiApiKey} onBlur={(e) => set({ geminiApiKey: e.target.value.trim() })} />
+          </Field>
+          <Toggle label="Read answers aloud" checked={s.voiceReadAloud} onChange={(v) => set({ voiceReadAloud: v })} />
+        </div>
+      </Block>
+
+      <Block title="Google Calendar and Tasks">
+        <div className="space-y-3">
+          <Field label="Zapier MCP server URL" hint="From mcp.zapier.com, with Google Calendar and Google Tasks actions enabled.">
+            <Input placeholder="https://mcp.zapier.com/api/mcp/…" defaultValue={s.zapierMcpUrl} onBlur={(e) => set({ zapierMcpUrl: e.target.value.trim() })} />
+          </Field>
+          <Field label="Zapier token (optional)">
+            <Input type="password" defaultValue={s.zapierMcpToken} onBlur={(e) => set({ zapierMcpToken: e.target.value.trim() })} />
+          </Field>
+          <ZapierTest />
+        </div>
+      </Block>
+
+      <Block title="Grading">
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-2">
+            {([1, 2, 3, 4] as const).map((n) => (
+              <Field key={n} label={`${n} from`}>
+                <Percent value={s.gradeCutoffs[n]} onCommit={(v) => set({ gradeCutoffs: { ...s.gradeCutoffs, [n]: v } })} />
+              </Field>
+            ))}
+          </div>
+          <Field label="Absence limit" hint="Share of all sessions you may miss, unless the course says otherwise.">
+            <Percent value={Math.round(s.absenceLimit * 100)} onCommit={(v) => set({ absenceLimit: v / 100 })} />
+          </Field>
+        </div>
+      </Block>
     </div>
   );
 }

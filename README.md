@@ -1,6 +1,6 @@
 # Moodle Copilot
 
-FestDev 26 hackathon project: a Chrome side-panel assistant for Yotkao's Moodle.
+FestDev 26 hackathon project: a Chrome side-panel assistant for JKU Moodle.
 
 - 💬 Ask about your grades, attendance and deadlines in plain language
 - 📅 One dashboard with everything that's coming up
@@ -17,7 +17,7 @@ npm run build        # → .output/chrome-mv3
 
 1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick `.output/chrome-mv3`.
 2. Click the toolbar icon → the side panel opens.
-3. Settings → paste a Claude API key. Demo data is on by default.
+3. Settings → paste a Gemini API key (Google AI Studio). Demo data is on by default.
 
 `npm run dev` opens a separate Chrome with the extension loaded and hot reload.
 
@@ -30,7 +30,8 @@ npm run build        # → .output/chrome-mv3
 | `src/lib/grading.ts` | Austrian 1–5 math: standing, "what do I need", what-if |
 | `src/lib/attendance.ts` | Absence limit math |
 | `src/lib/settings.ts`, `storage.ts` | Settings + shared storage keys |
-| `src/lib/ai/client.ts` | Claude client |
+| `src/lib/ai/client.ts` | Gemini client |
+| `src/components/ui/moodle.tsx` | Moodle-look building blocks: Block, Button, Badge, Input, ActivityIcon |
 | `src/lib/google/sync.ts` | Google Calendar/Tasks via Zapier MCP |
 | `src/components/*` | Chat, Dashboard, Settings, Google buttons |
 | `src/entrypoints/` | Side panel + background service worker |
