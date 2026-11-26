@@ -1,11 +1,10 @@
-// Streaming chat engine with a manual tool loop. UI-agnostic so it can also run from node scripts.
-import type Anthropic from '@anthropic-ai/sdk';
-import { CLAUDE_MODEL, getClaude } from './client';
+// Streaming chat engine on Gemini (@google/genai chats API). UI-agnostic so it can also run from node scripts.
+// The SDK chat object keeps the history (incl. Gemini thought signatures needed for multi-turn function calling).
+import type { Chat, Content, FunctionResponse, GoogleGenAI, Part } from '@google/genai';
+import { GEMINI_MODEL, getGemini } from './client';
 import { buildSystemPrompt } from './prompt';
 import { executeTool, TOOLS, type ToolName, type ToolOutput } from './tools';
 import { getSettings } from '../settings';
-
-export type History = Anthropic.MessageParam[];
 
 export interface ChatCallbacks {
   /** Streamed text delta. */
@@ -15,80 +14,119 @@ export interface ChatCallbacks {
   onToolResult?: (name: ToolName, out: ToolOutput) => void;
 }
 
-const MAX_TURNS = 8;
+const MAX_ROUNDS = 6;
 
-/**
- * Runs one user turn to completion. Mutates `history` (appends assistant + tool_result messages).
- * Returns the final assistant text (all text blocks of the whole turn, in order).
- * Throws on API errors; the caller shows a friendly message and offers a retry.
- */
-export async function runTurn(history: History, cb: ChatCallbacks = {}, client?: Anthropic): Promise<string> {
-  const settings = await getSettings();
-  const claude = client ?? (await getClaude());
-  const system = buildSystemPrompt(settings);
-  let fullText = '';
+export class Conversation {
+  private chat: Chat;
+  private constructor(private ai: GoogleGenAI, private system: string) {
+    this.chat = this.make();
+  }
 
-  for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const stream = claude.messages.stream({
-      model: CLAUDE_MODEL,
-      max_tokens: 4096,
-      system,
-      tools: TOOLS,
-      output_config: { effort: 'low' },
-      messages: history,
+  /** Reads the key from settings (throws if missing). Pass `ai` to inject a client (scripts). */
+  static async create(ai?: GoogleGenAI): Promise<Conversation> {
+    const settings = await getSettings();
+    return new Conversation(ai ?? (await getGemini()), buildSystemPrompt(settings));
+  }
+
+  private make(history?: Content[]): Chat {
+    return this.ai.chats.create({
+      model: GEMINI_MODEL,
+      config: { systemInstruction: this.system, tools: [{ functionDeclarations: TOOLS }] },
+      history,
     });
-    stream.on('text', (t) => {
-      fullText += t;
-      cb.onText?.(t);
-    });
-    const msg = await stream.finalMessage();
+  }
 
-    // Always keep the full content (incl. tool_use) in history.
-    history.push({ role: 'assistant', content: msg.content });
-
-    if (msg.stop_reason === 'refusal') {
-      const note = settings.language === 'de' ? '\n\nDazu kann ich leider nichts sagen.' : "\n\nI can't help with that.";
-      fullText += note;
+  /**
+   * Runs one user turn to completion (text streaming + tool loop). Returns the full answer text.
+   * On error the chat history is rolled back to before this turn, so a retry starts clean.
+   */
+  async send(text: string, cb: ChatCallbacks = {}): Promise<string> {
+    const snapshot = structuredClone(this.chat.getHistory(true));
+    let full = '';
+    try {
+      let message: Part[] = [{ text }];
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        const stream = await this.chat.sendMessageStream({ message });
+        const calls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
+        let roundText = '';
+        for await (const chunk of stream) {
+          for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
+            if (part.text && !part.thought) {
+              roundText += part.text;
+              full += part.text;
+              cb.onText?.(part.text);
+            }
+            if (part.functionCall?.name) {
+              calls.push({ id: part.functionCall.id, name: part.functionCall.name, args: (part.functionCall.args ?? {}) as Record<string, unknown> });
+            }
+          }
+        }
+        if (!calls.length) {
+          if (!full.trim()) {
+            full = "I couldn't come up with an answer. Please try rephrasing.";
+            cb.onText?.(full);
+          }
+          return full;
+        }
+        const responses: Part[] = [];
+        for (const c of calls) {
+          const name = c.name as ToolName;
+          cb.onToolStart?.(name);
+          const out = await executeTool(c.name, c.args);
+          cb.onToolResult?.(name, out);
+          const fr: FunctionResponse = { name: c.name, response: out.isError ? { error: out.content } : { output: out.content } };
+          if (c.id) fr.id = c.id;
+          responses.push({ functionResponse: fr });
+        }
+        // ALL function responses go back in ONE message.
+        message = responses;
+        if (roundText && !full.endsWith('\n')) {
+          full += '\n\n';
+          cb.onText?.('\n\n');
+        }
+      }
+      const note = '\n\n(I had to stop here. Ask again if something is missing.)';
+      full += note;
       cb.onText?.(note);
-      return fullText;
-    }
-    if (msg.stop_reason === 'max_tokens') {
-      const note = settings.language === 'de' ? '\n\n(Antwort gekürzt.)' : '\n\n(Answer was cut off.)';
-      fullText += note;
-      cb.onText?.(note);
-      if (!msg.content.some((b) => b.type === 'tool_use')) return fullText;
-    }
-    if (msg.stop_reason !== 'tool_use' && msg.stop_reason !== 'max_tokens' && msg.stop_reason !== 'pause_turn') return fullText;
-    if (msg.stop_reason === 'pause_turn') continue;
-
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of msg.content) {
-      if (block.type !== 'tool_use') continue;
-      const name = block.name as ToolName;
-      cb.onToolStart?.(name);
-      const out = await executeTool(block.name, (block.input ?? {}) as Record<string, unknown>);
-      cb.onToolResult?.(name, out);
-      results.push({ type: 'tool_result', tool_use_id: block.id, content: out.content, ...(out.isError ? { is_error: true } : {}) });
-    }
-    if (!results.length) return fullText;
-    // ALL tool results go in ONE user message.
-    history.push({ role: 'user', content: results });
-    // Separate text before/after tool calls visually.
-    if (fullText && !fullText.endsWith('\n')) {
-      fullText += '\n\n';
-      cb.onText?.('\n\n');
+      return full;
+    } catch (e) {
+      this.chat = this.make(snapshot);
+      throw e;
     }
   }
-  return fullText;
+}
+
+export type ChatErrorKind = 'no_key' | 'api_disabled' | 'bad_key' | 'rate' | 'overloaded' | 'network' | 'other';
+
+export function classifyError(e: unknown): ChatErrorKind {
+  const status = (e as { status?: number })?.status;
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/No Gemini API key/i.test(msg)) return 'no_key';
+  if (/SERVICE_DISABLED|has not been used in project|API_KEY_SERVICE_BLOCKED|accessNotConfigured/i.test(msg)) return 'api_disabled';
+  if (/API_KEY_INVALID|API key not valid/i.test(msg) || status === 401) return 'bad_key';
+  if (status === 403) return 'api_disabled';
+  if (status === 429 || /RESOURCE_EXHAUSTED/.test(msg)) return 'rate';
+  if (status && status >= 500) return 'overloaded';
+  if (/fetch|network|Failed to/i.test(msg)) return 'network';
+  return 'other';
 }
 
 /** Friendly message for an API/network error. */
-export function friendlyError(e: unknown, lang: 'de' | 'en'): string {
-  const status = (e as { status?: number })?.status;
-  const msg = e instanceof Error ? e.message : String(e);
-  if (status === 401) return lang === 'de' ? 'Der API-Key wurde abgelehnt. Bitte prüfe ihn in den Einstellungen.' : 'The API key was rejected. Please check it in Settings.';
-  if (status === 429) return lang === 'de' ? 'Gerade zu viele Anfragen. Versuch es in ein paar Sekunden nochmal.' : 'Too many requests right now. Try again in a few seconds.';
-  if (status && status >= 500) return lang === 'de' ? 'Claude ist gerade überlastet. Bitte nochmal versuchen.' : 'Claude is overloaded right now. Please try again.';
-  if (/fetch|network|Failed to/i.test(msg)) return lang === 'de' ? 'Keine Verbindung zu Claude. Prüfe dein Internet.' : "Can't reach Claude. Check your connection.";
-  return lang === 'de' ? 'Das hat leider nicht geklappt. Bitte nochmal versuchen.' : "That didn't work. Please try again.";
+export function friendlyError(e: unknown): string {
+  switch (classifyError(e)) {
+    case 'no_key':
+      return 'Add your Gemini API key in Settings first.';
+    case 'api_disabled':
+      return "The Gemini API isn't enabled for this key yet. Enable the Generative Language API for its Google Cloud project, or create a new key in Google AI Studio.";
+    case 'bad_key':
+      return 'The Gemini API key was rejected. Please check it in Settings.';
+    case 'rate':
+      return 'Too many requests right now. Try again in a few seconds.';
+    case 'overloaded':
+      return 'Gemini is overloaded right now. Please try again.';
+    case 'network':
+      return "Can't reach Gemini. Check your connection.";
+    default:
+      return "That didn't work. Please try again.";
+  }
 }

@@ -2,7 +2,9 @@
 // asks once, and closes itself. Afterwards the side panel can use the mic.
 import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import { Mic, MicOff } from 'lucide-react';
 import '@/assets/main.css';
+import { Block, Button } from '@/components/ui/moodle';
 
 function Page() {
   const [state, setState] = useState<'asking' | 'ok' | 'denied'>('asking');
@@ -23,26 +25,36 @@ function Page() {
   }, []);
 
   return (
-    <div className="grid min-h-full place-items-center p-8 text-center">
-      <div className="max-w-sm space-y-3">
-        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-2xl text-white">🎤</div>
-        {state === 'asking' && <p className="text-lg font-semibold">Please click “Allow” for the microphone…</p>}
-        {state === 'ok' && (
-          <>
-            <p className="text-lg font-semibold">🎤 Microphone enabled</p>
-            <p className="text-sm text-slate-500">You can close this tab.</p>
-          </>
-        )}
-        {state === 'denied' && (
-          <>
-            <p className="text-lg font-semibold">Microphone is blocked</p>
-            <p className="text-sm text-slate-500">Allow it via the lock icon in the address bar, then try again.</p>
-            <button onClick={ask} className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
-              Try again
-            </button>
-          </>
-        )}
-      </div>
+    <div className="grid min-h-full place-items-center bg-surface-2 p-6">
+      <Block className="w-full max-w-md" title="Microphone access">
+        <div className="space-y-3">
+          {state === 'asking' && (
+            <p className="flex items-start gap-2">
+              <Mic className="mt-0.5 h-5 w-5 shrink-0 text-brand-500" />
+              <span>Please click "Allow" in the browser prompt to let Moodle Copilot use your microphone.</span>
+            </p>
+          )}
+          {state === 'ok' && (
+            <>
+              <p className="flex items-start gap-2 font-bold text-success">
+                <Mic className="mt-0.5 h-5 w-5 shrink-0" />
+                Microphone enabled
+              </p>
+              <p className="text-muted">You can close this tab.</p>
+            </>
+          )}
+          {state === 'denied' && (
+            <>
+              <p className="flex items-start gap-2 font-bold text-danger">
+                <MicOff className="mt-0.5 h-5 w-5 shrink-0" />
+                Microphone is blocked
+              </p>
+              <p className="text-muted">Allow it via the lock icon in the address bar, then try again.</p>
+              <Button onClick={ask}>Try again</Button>
+            </>
+          )}
+        </div>
+      </Block>
     </div>
   );
 }

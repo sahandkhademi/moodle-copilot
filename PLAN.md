@@ -52,7 +52,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 
 ## Phase 2 — The two hero features
 
-- [ ] **2.1 AI chat in the side panel**
+- [x] **2.1 AI chat in the side panel**
   - Chat UI: streaming answers, markdown, suggested-question chips ("What's due this week?", "How did I do in Logik?", "Am I at risk anywhere for attendance?")
   - Gemini function-calling loop over the data-layer functions
   - System prompt: student assistant, answers briefly, replies in the user's language, cites the course and links to the Moodle page

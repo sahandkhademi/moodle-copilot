@@ -1,5 +1,5 @@
 // Run: npx tsx scripts/check-chat-tools.ts
-// Calls every chat tool executor against mock data. Optional real streamed request if ANTHROPIC_API_KEY is set.
+// Calls every chat tool executor against mock data. Optional real multi-turn Gemini conversation if GEMINI_API_KEY is set (pass it via env only).
 declare const process: any;
 const mem = new Map<string, string>();
 (globalThis as any).localStorage = {
@@ -48,21 +48,27 @@ check('what_if 85% -> grade 2', JSON.parse(wi.content).projected_grade === 2);
 check('propose_google_sync returns card + items', !!sync.syncProposal && sync.syncProposal.items.length === ids.length && ids.length > 0);
 
 // Optional live run
-const key = process.env.ANTHROPIC_API_KEY;
+const key = process.env.GEMINI_API_KEY;
 if (!key) {
-  console.log('\nSKIP live request: no ANTHROPIC_API_KEY set.');
+  console.log('\nSKIP live request: no GEMINI_API_KEY set.');
 } else {
-  mem.set('settings', JSON.stringify({ anthropicApiKey: key, language: 'en' }));
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
-  const { runTurn } = await import('../src/lib/ai/chat');
-  const history: any[] = [{ role: 'user', content: 'What do I need on the Logik final for a 2?' }];
-  const text = await runTurn(
-    history,
-    { onToolStart: (n) => console.log('[tool]', n), onText: (t) => process.stdout.write(t) },
-    new Anthropic({ apiKey: key }),
-  );
-  console.log('\n\nfinal length', text.length);
-  check('live answer mentions 85', /85/.test(text));
+  mem.set('settings', JSON.stringify({ geminiApiKey: key }));
+  const { GoogleGenAI } = await import('@google/genai');
+  const { Conversation, friendlyError } = await import('../src/lib/ai/chat');
+  try {
+    const conv = await Conversation.create(new GoogleGenAI({ apiKey: key }));
+    for (const q of ['How did I do in my last Logic test?', 'What do I need on the final for a 2?']) {
+      console.log(`\n>>> ${q}`);
+      const text = await conv.send(q, { onToolStart: (n) => console.log('[tool]', n), onText: (t) => process.stdout.write(t) });
+      console.log('\n(length', text.length + ')');
+      check(`live answer non-empty: ${q}`, text.trim().length > 0);
+      if (/final for a 2/.test(q)) check('live answer mentions 85', /85/.test(text));
+    }
+  } catch (e) {
+    console.log('\nLIVE ERROR:', (e as Error).message.slice(0, 400));
+    console.log('friendly:', friendlyError(e));
+    failed++;
+  }
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nAll checks passed');

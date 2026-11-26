@@ -1,6 +1,6 @@
-// Local tools for the chat. All numbers come from code (grading.ts / attendance.ts); Claude only explains.
+// Local tools for the chat. All numbers come from code (grading.ts / attendance.ts); the model only explains.
 // Executors are plain async functions so scripts/check-chat-tools.ts can call them without a browser.
-import type Anthropic from '@anthropic-ai/sdk';
+import type { FunctionDeclaration } from '@google/genai';
 import { getData } from '../data';
 import { getSettings } from '../settings';
 import { courseStanding, GRADE_LABELS, neededForGrade, projectedGrade, type AustrianGrade } from '../grading';
@@ -17,108 +17,93 @@ export type ToolName =
   | 'propose_google_sync';
 
 export interface ToolOutput {
-  /** String returned to Claude. */
+  /** String returned to the model. */
   content: string;
   /** Set by propose_google_sync: the chat renders a confirmation card. */
   syncProposal?: { items: SyncItem[]; options: SyncOptions };
   isError?: boolean;
 }
 
-export const TOOL_HINTS: Record<ToolName, { icon: string; de: string; en: string }> = {
-  get_courses: { icon: '📚', de: 'Kurse geprüft', en: 'checked courses' },
-  get_deadlines: { icon: '📅', de: 'Fristen geprüft', en: 'checked deadlines' },
-  get_grades: { icon: '📊', de: 'Noten geprüft', en: 'checked grades' },
-  get_attendance: { icon: '🗓️', de: 'Anwesenheit geprüft', en: 'checked attendance' },
-  calculate_needed_score: { icon: '🧮', de: 'Punkte berechnet', en: 'calculated needed score' },
-  what_if: { icon: '🔮', de: 'Szenario berechnet', en: 'ran a what-if' },
-  propose_google_sync: { icon: '📤', de: 'Google-Vorschlag erstellt', en: 'prepared Google sync' },
+export type ToolHintIcon = 'courses' | 'deadlines' | 'grades' | 'attendance' | 'calc' | 'sync';
+export const TOOL_HINTS: Record<ToolName, { icon: ToolHintIcon; label: string }> = {
+  get_courses: { icon: 'courses', label: 'Checked courses' },
+  get_deadlines: { icon: 'deadlines', label: 'Checked deadlines' },
+  get_grades: { icon: 'grades', label: 'Checked grades' },
+  get_attendance: { icon: 'attendance', label: 'Checked attendance' },
+  calculate_needed_score: { icon: 'calc', label: 'Calculated needed score' },
+  what_if: { icon: 'calc', label: 'Ran a what-if' },
+  propose_google_sync: { icon: 'sync', label: 'Prepared Google sync' },
 };
 
-const courseIdProp = { type: 'integer', description: 'Course id from get_courses' } as const;
-const optCourse = { type: ['integer', 'null'], description: 'Only this course, or null for all' } as const;
+const optCourse = { type: 'integer', description: 'Only this course id (from get_courses). Omit for all courses.' } as const;
 
-export const TOOLS: Anthropic.Tool[] = [
+/** Gemini function declarations (JSON schema in parametersJsonSchema). */
+export const TOOLS: FunctionDeclaration[] = [
   {
     name: 'get_courses',
     description: "List the student's courses (id, short name, full name, Moodle URL, teacher).",
-    strict: true,
-    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    parametersJsonSchema: { type: 'object', properties: {} },
   },
   {
     name: 'get_deadlines',
     description:
       'Upcoming deadlines (assignments, quizzes, exams) incl. overdue unsubmitted ones, sorted by due date. Each has an id usable with propose_google_sync.',
-    strict: true,
-    input_schema: {
+    parametersJsonSchema: {
       type: 'object',
       properties: {
         course_id: optCourse,
-        days_ahead: { type: ['integer', 'null'], description: 'Only deadlines within the next N days, or null for all' },
+        days_ahead: { type: 'integer', description: 'Only deadlines within the next N days. Omit for all.' },
       },
-      required: ['course_id', 'days_ahead'],
-      additionalProperties: false,
     },
   },
   {
     name: 'get_grades',
     description:
       'Grade items (score, max, weight, class average, feedback, Moodle url) plus the per-course standing with the Austrian grade (1-5) and label. score null = not graded yet.',
-    strict: true,
-    input_schema: {
-      type: 'object',
-      properties: { course_id: optCourse },
-      required: ['course_id'],
-      additionalProperties: false,
-    },
+    parametersJsonSchema: { type: 'object', properties: { course_id: optCourse } },
   },
   {
     name: 'get_attendance',
     description: 'Attendance per course: absences, allowed absences, how many are left and the state (safe / warning / over).',
-    strict: true,
-    input_schema: {
-      type: 'object',
-      properties: { course_id: optCourse },
-      required: ['course_id'],
-      additionalProperties: false,
-    },
+    parametersJsonSchema: { type: 'object', properties: { course_id: optCourse } },
   },
   {
     name: 'calculate_needed_score',
     description:
       'What average is needed on all remaining (ungraded) items of a course to reach an Austrian grade 1-4? Returns percent and points per item, or impossible/secured.',
-    strict: true,
-    input_schema: {
+    parametersJsonSchema: {
       type: 'object',
-      properties: { course_id: courseIdProp, target_grade: { type: 'integer', enum: [1, 2, 3, 4], description: 'Austrian grade to reach' } },
+      properties: {
+        course_id: { type: 'integer', description: 'Course id from get_courses' },
+        target_grade: { type: 'integer', enum: [1, 2, 3, 4], description: 'Austrian grade to reach' },
+      },
       required: ['course_id', 'target_grade'],
-      additionalProperties: false,
     },
   },
   {
     name: 'what_if',
     description: 'Projected final grade of a course if the student scores a given percent on every remaining item.',
-    strict: true,
-    input_schema: {
+    parametersJsonSchema: {
       type: 'object',
-      properties: { course_id: courseIdProp, percent_on_remaining: { type: 'number', description: '0-100' } },
+      properties: {
+        course_id: { type: 'integer', description: 'Course id from get_courses' },
+        percent_on_remaining: { type: 'number', description: '0-100' },
+      },
       required: ['course_id', 'percent_on_remaining'],
-      additionalProperties: false,
     },
   },
   {
     name: 'propose_google_sync',
     description:
       'Show the student a confirmation card to add deadlines to Google Calendar and/or Google Tasks. Writes NOTHING itself; the student confirms on the card. Use for "put X in my calendar" / "make tasks for ...".',
-    strict: true,
-    input_schema: {
+    parametersJsonSchema: {
       type: 'object',
       properties: {
         deadline_ids: { type: 'array', items: { type: 'string' }, description: 'Deadline ids from get_deadlines' },
-        calendar: { type: 'boolean', description: 'Create calendar events' },
-        tasks: { type: 'boolean', description: 'Create Google Tasks' },
+        calendar: { type: 'boolean', description: 'Create calendar events (default true)' },
+        tasks: { type: 'boolean', description: 'Create Google Tasks (default true)' },
       },
-      required: ['deadline_ids', 'calendar', 'tasks'],
-      additionalProperties: false,
+      required: ['deadline_ids'],
     },
   },
 ];
@@ -132,7 +117,6 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
     const data = await getData();
     const settings = await getSettings();
     const cid = typeof input.course_id === 'number' ? input.course_id : undefined;
-    const lang = settings.language;
     const courses = await data.getCourses();
     const courseName = (id: number) => courses.find((c) => c.id === id)?.fullname ?? String(id);
 
@@ -155,7 +139,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
             ...d,
             course: courseName(d.courseId),
             overdue: new Date(d.due).getTime() < now.getTime(),
-            dueLocal: new Date(d.due).toLocaleString('de-AT', { timeZone: 'Europe/Vienna', dateStyle: 'full', timeStyle: 'short' }),
+            dueLocal: new Date(d.due).toLocaleString('en-GB', { timeZone: 'Europe/Vienna', dateStyle: 'full', timeStyle: 'short' }),
           }));
         return ok(list);
       }
@@ -171,7 +155,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
             course: courseName(id),
             current_percent: s.currentPercent == null ? null : r1(s.currentPercent),
             current_grade: s.currentGrade,
-            current_grade_label: s.currentGrade ? GRADE_LABELS[s.currentGrade][lang] : null,
+            current_grade_label: s.currentGrade ? GRADE_LABELS[s.currentGrade].en : null,
             graded_weight_percent: r1(s.gradedWeight * 100),
             remaining_items: s.remaining.map((i) => i.name),
           };
@@ -218,7 +202,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
         return ok({
           course: courseName(cid),
           target_grade: target,
-          target_label: GRADE_LABELS[target][lang],
+          target_label: GRADE_LABELS[target].en,
           target_percent_of_course: res.targetPercent,
           status: res.status, // secured | possible | impossible
           earned_percent_so_far: r1(s.earnedPercent),
@@ -244,7 +228,7 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
           assumed_percent_on_remaining: pct,
           projected_final_percent: r1(res.finalPercent),
           projected_grade: res.grade,
-          projected_grade_label: GRADE_LABELS[res.grade][lang],
+          projected_grade_label: GRADE_LABELS[res.grade].en,
         });
       }
 
