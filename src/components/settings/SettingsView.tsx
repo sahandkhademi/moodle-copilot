@@ -1,5 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { useSettings, type Settings } from '@/lib/settings';
+import { DemoTools } from '@/components/demo/DemoTools';
+import { MoodleTest } from '@/components/moodle/MoodleTest';
+import { ZapierTest } from '@/components/google/ZapierTest';
 
 function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -49,14 +52,14 @@ export default function SettingsView() {
           </span>
           <input type="checkbox" className="h-5 w-5 accent-brand-500" checked={s.mockMode} onChange={(e) => set({ mockMode: e.target.checked })} />
         </label>
-        {/* Feature 4.4 adds its "simulate new grade" button here */}
-        <div id="demo-tools" />
+        <DemoTools />
       </Section>
 
       <Section title="Moodle">
         <Field label="Moodle URL" hint="Log in to Moodle in this browser. Copilot uses that session.">
           <input className={input} placeholder="https://moodle.yotkao.at" defaultValue={s.moodleUrl} onBlur={(e) => set({ moodleUrl: e.target.value.trim().replace(/\/$/, '') })} />
         </Field>
+        <MoodleTest />
       </Section>
 
       <Section title="AI">
@@ -82,6 +85,7 @@ export default function SettingsView() {
         <Field label="Zapier token (optional)">
           <input className={input} type="password" defaultValue={s.zapierMcpToken} onBlur={(e) => set({ zapierMcpToken: e.target.value.trim() })} />
         </Field>
+        <ZapierTest />
       </Section>
 
       <Section title="Grading">

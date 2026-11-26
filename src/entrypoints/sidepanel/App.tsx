@@ -3,6 +3,7 @@ import ChatView from '@/components/chat/ChatView';
 import DashboardView from '@/components/dashboard/DashboardView';
 import SettingsView from '@/components/settings/SettingsView';
 import { useSettings } from '@/lib/settings';
+import { useSidepanelPresence } from '@/lib/background/useSidepanelPresence';
 import { getItem, KEYS, watchItem, type FocusRequest } from '@/lib/storage';
 
 type Tab = FocusRequest['tab'];
@@ -15,6 +16,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 export default function App() {
   const [settings] = useSettings();
+  useSidepanelPresence();
   const [tab, setTab] = useState<Tab>('chat');
   const [focus, setFocus] = useState<FocusRequest | null>(null);
 
