@@ -27,6 +27,7 @@ import { useSettings } from '@/lib/settings';
 import type { FocusRequest } from '@/lib/storage';
 import Markdown from './Markdown';
 import { BriefingNote } from './BriefingNote';
+import { WorkingSteps } from './WorkingSteps';
 import { useReadAloud, useVoiceInput } from './useVoice';
 
 interface Proposal {
@@ -351,13 +352,7 @@ function AssistantMessage({
       {(m.text || waiting) && (
         <div>
           {m.text && <Markdown>{m.text}</Markdown>}
-          {waiting && (
-            <div className={cx('flex items-center gap-1', m.text && 'mt-1.5')} aria-label="typing">
-              {[0, 150, 300].map((d) => (
-                <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" style={{ animationDelay: `${d}ms` }} />
-              ))}
-            </div>
-          )}
+          {waiting && <WorkingSteps prompt={m.prompt ?? ''} compact={!!m.text} />}
         </div>
       )}
       {m.proposals?.map((p) => (

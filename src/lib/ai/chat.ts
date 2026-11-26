@@ -72,7 +72,8 @@ export class Conversation {
           cb.onText?.(d);
         },
         onToolStart: (n) => {
-          emitted = true;
+          // Read-only tools are safe to run again on another model; a Google proposal card is not.
+          if (n === 'propose_google_sync') emitted = true;
           cb.onToolStart?.(n);
         },
         onToolResult: cb.onToolResult,
@@ -170,7 +171,7 @@ export class Conversation {
   }
 }
 
-export type ChatErrorKind = 'no_key' | 'api_disabled' | 'bad_key' | 'billing' | 'rate' | 'overloaded' | 'network' | 'other';
+export type ChatErrorKind = 'no_key' | 'api_disabled' | 'bad_key' | 'billing' | 'quota' | 'rate' | 'overloaded' | 'network' | 'other';
 
 export function classifyError(e: unknown): ChatErrorKind {
   const status = (e as { status?: number })?.status;
@@ -178,7 +179,9 @@ export function classifyError(e: unknown): ChatErrorKind {
   if (/No Gemini API key/i.test(msg)) return 'no_key';
   if (/SERVICE_DISABLED|has not been used in project|API_KEY_SERVICE_BLOCKED|accessNotConfigured/i.test(msg)) return 'api_disabled';
   if (/API_KEY_INVALID|API key not valid/i.test(msg) || status === 401) return 'bad_key';
-  if (status === 402 || /credits are depleted|billing/i.test(msg)) return 'billing';
+  // 429 first: Google's quota message also mentions "plan and billing details".
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) return /per day|PerDay|daily/i.test(msg) ? 'quota' : 'rate';
+  if (status === 402 || /credits are depleted/i.test(msg)) return 'billing';
   if (status === 403) return 'api_disabled';
   if (status === 429 || /RESOURCE_EXHAUSTED/.test(msg)) return 'rate';
   if (status && status >= 500) return 'overloaded';
@@ -195,6 +198,8 @@ export function friendlyError(e: unknown): string {
       return "The Gemini API isn't enabled for this key yet. Enable the Generative Language API for its Google Cloud project, or create a new key in Google AI Studio.";
     case 'bad_key':
       return 'The Gemini API key was rejected. Please check it in Settings.';
+    case 'quota':
+      return "Gemini's free daily limit for this key is used up. Enable billing in Google AI Studio, or try again tomorrow.";
     case 'billing':
       return 'The Gemini project for this key has no credits left. Add credits or billing in Google AI Studio (ai.studio/projects).';
     case 'rate':
