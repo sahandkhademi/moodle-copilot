@@ -154,6 +154,7 @@ export function friendlyError(e: unknown): string {
   if (err?.status === 401 || /API key|UNAUTHENTICATED/i.test(raw)) {
     return /zapier|mcp/i.test(raw) ? 'Zapier rejected the request (401). Check the URL or token in Settings.' : 'Gemini API key missing or invalid (Settings).';
   }
+  if (err?.status === 402 || /credits are depleted/i.test(raw)) return 'Gemini project has no credits left (402). Add credits in Google AI Studio.';
   if (err?.status === 429 || /RESOURCE_EXHAUSTED/i.test(raw)) return 'Rate limited, wait a moment and try again.';
   if (/No Gemini API key/i.test(raw)) return raw;
   if (/mcp|zapier|sse|streamable/i.test(raw)) return `Zapier connection failed: ${raw.slice(0, 160)}`;

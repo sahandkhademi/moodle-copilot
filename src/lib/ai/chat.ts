@@ -96,7 +96,7 @@ export class Conversation {
   }
 }
 
-export type ChatErrorKind = 'no_key' | 'api_disabled' | 'bad_key' | 'rate' | 'overloaded' | 'network' | 'other';
+export type ChatErrorKind = 'no_key' | 'api_disabled' | 'bad_key' | 'billing' | 'rate' | 'overloaded' | 'network' | 'other';
 
 export function classifyError(e: unknown): ChatErrorKind {
   const status = (e as { status?: number })?.status;
@@ -104,6 +104,7 @@ export function classifyError(e: unknown): ChatErrorKind {
   if (/No Gemini API key/i.test(msg)) return 'no_key';
   if (/SERVICE_DISABLED|has not been used in project|API_KEY_SERVICE_BLOCKED|accessNotConfigured/i.test(msg)) return 'api_disabled';
   if (/API_KEY_INVALID|API key not valid/i.test(msg) || status === 401) return 'bad_key';
+  if (status === 402 || /credits are depleted|billing/i.test(msg)) return 'billing';
   if (status === 403) return 'api_disabled';
   if (status === 429 || /RESOURCE_EXHAUSTED/.test(msg)) return 'rate';
   if (status && status >= 500) return 'overloaded';
@@ -120,6 +121,8 @@ export function friendlyError(e: unknown): string {
       return "The Gemini API isn't enabled for this key yet. Enable the Generative Language API for its Google Cloud project, or create a new key in Google AI Studio.";
     case 'bad_key':
       return 'The Gemini API key was rejected. Please check it in Settings.';
+    case 'billing':
+      return 'The Gemini project for this key has no credits left. Add credits or billing in Google AI Studio (ai.studio/projects).';
     case 'rate':
       return 'Too many requests right now. Try again in a few seconds.';
     case 'overloaded':
