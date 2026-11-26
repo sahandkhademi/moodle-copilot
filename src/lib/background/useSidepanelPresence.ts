@@ -30,11 +30,6 @@ export function useSidepanelPresence(): void {
       }, 1500);
     };
 
-    try {
-      chrome.runtime.connect({ name: 'sidepanel' });
-    } catch {
-      /* ignore */
-    }
     refresh();
     schedule();
     const unwatch = watchItem(KEYS.unseenGrades, (v) => {

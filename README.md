@@ -21,6 +21,17 @@ npm run build        # → .output/chrome-mv3
 
 `npm run dev` opens a separate Chrome with the extension loaded and hot reload.
 
+## Checks
+
+```bash
+npm run compile && npm run build
+npx tsx scripts/check-chat-tools.ts        # tool + grade math (live Gemini call if GEMINI_API_KEY is set)
+npx tsx scripts/check-notifications.ts
+npx tsx scripts/check-google.ts
+npx tsx scripts/check-moodle-parsers.ts    # fixtures only
+node scripts/e2e-extension.mjs             # loads the built extension in real Chromium
+```
+
 ## Code map
 
 | Path | What |
