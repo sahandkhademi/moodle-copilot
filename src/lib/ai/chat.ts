@@ -1,7 +1,8 @@
 // Streaming chat engine on Gemini (@google/genai chats API). UI-agnostic so it can also run from node scripts.
 // The SDK chat object keeps the history (incl. Gemini thought signatures needed for multi-turn function calling).
-import type { Chat, Content, FunctionResponse, GoogleGenAI, Part } from '@google/genai';
-import { GEMINI_MODEL, getGemini } from './client';
+import type { Chat, Content, FunctionResponse, GenerateContentConfig, GoogleGenAI, Part } from '@google/genai';
+import { FIRST_CHUNK_TIMEOUT_MS, FORCE_TOOLS_MODELS, GEMINI_MODELS, getGemini, isRetriableModelError } from './client';
+import { FunctionCallingConfigMode } from '@google/genai';
 import { buildSystemPrompt } from './prompt';
 import { executeTool, TOOLS, type ToolName, type ToolOutput } from './tools';
 import { getSettings } from '../settings';
@@ -16,24 +17,45 @@ export interface ChatCallbacks {
 
 const MAX_ROUNDS = 6;
 
+/** Last model that worked, shared by all conversations in this panel, so new chats skip overloaded models. */
+let lastGoodModelIdx = 0;
+
+/** Thought signatures are model-specific; drop them when moving history to another model. */
+function stripSignatures(history: Content[]): Content[] {
+  return history.map((c) => ({ ...c, parts: c.parts?.map(({ thoughtSignature: _sig, ...p }) => p) }));
+}
+
 export class Conversation {
   private chat: Chat;
+  /** Index into GEMINI_MODELS. Moves down the list when a model is overloaded, and stays there. */
+  private modelIdx = lastGoodModelIdx;
   private constructor(private ai: GoogleGenAI, private system: string) {
     this.chat = this.make();
   }
 
+  get model(): string {
+    return GEMINI_MODELS[this.modelIdx]!;
+  }
+
   /** Reads the key from settings (throws if missing). Pass `ai` to inject a client (scripts). */
-  static async create(ai?: GoogleGenAI): Promise<Conversation> {
+  static async create(ai?: GoogleGenAI, opts: { model?: string } = {}): Promise<Conversation> {
     const settings = await getSettings();
-    return new Conversation(ai ?? (await getGemini()), buildSystemPrompt(settings));
+    const conv = new Conversation(ai ?? (await getGemini()), buildSystemPrompt(settings));
+    const idx = opts.model ? GEMINI_MODELS.indexOf(opts.model) : -1;
+    if (idx > 0) {
+      conv.modelIdx = idx;
+      conv.chat = conv.make();
+    }
+    return conv;
+  }
+
+  /** Base request config. NOTE: a per-message `config` REPLACES the chat's config in @google/genai, so always spread this in. */
+  private get baseConfig(): GenerateContentConfig {
+    return { systemInstruction: this.system, tools: [{ functionDeclarations: TOOLS }] };
   }
 
   private make(history?: Content[]): Chat {
-    return this.ai.chats.create({
-      model: GEMINI_MODEL,
-      config: { systemInstruction: this.system, tools: [{ functionDeclarations: TOOLS }] },
-      history,
-    });
+    return this.ai.chats.create({ model: this.model, config: this.baseConfig, history });
   }
 
   /**
@@ -42,14 +64,69 @@ export class Conversation {
    */
   async send(text: string, cb: ChatCallbacks = {}): Promise<string> {
     const snapshot = structuredClone(this.chat.getHistory(true));
+    for (;;) {
+      let emitted = false;
+      const tracked: ChatCallbacks = {
+        onText: (d) => {
+          emitted = true;
+          cb.onText?.(d);
+        },
+        onToolStart: (n) => {
+          emitted = true;
+          cb.onToolStart?.(n);
+        },
+        onToolResult: cb.onToolResult,
+      };
+      try {
+        const out = await this.attempt(text, tracked);
+        lastGoodModelIdx = this.modelIdx;
+        return out;
+      } catch (e) {
+        // Overloaded / unavailable before anything reached the user → silently switch to the next model.
+        const canFallback = !emitted && isRetriableModelError(e) && this.modelIdx < GEMINI_MODELS.length - 1;
+        if (canFallback) {
+          console.warn(`[chat] ${this.model} unavailable, switching model`, e);
+          this.modelIdx++;
+          this.chat = this.make(stripSignatures(snapshot));
+          continue;
+        }
+        this.chat = this.make(snapshot);
+        throw e;
+      }
+    }
+  }
+
+  private async attempt(text: string, cb: ChatCallbacks): Promise<string> {
     let full = '';
-    try {
+    {
       let message: Part[] = [{ text }];
       for (let round = 0; round < MAX_ROUNDS; round++) {
-        const stream = await this.chat.sendMessageStream({ message });
+        // Abort if the model doesn't start answering in time (some models hang under load).
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(new Error('Gemini timed out')), FIRST_CHUNK_TIMEOUT_MS);
+        let stream: AsyncGenerator<import('@google/genai').GenerateContentResponse>;
+        try {
+          const force = round === 0 && FORCE_TOOLS_MODELS.has(this.model);
+          stream = await this.chat.sendMessageStream({
+            message,
+            config: {
+              ...this.baseConfig,
+              abortSignal: ctrl.signal,
+              ...(force ? { toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY } } } : {}),
+            },
+          });
+        } catch (e) {
+          clearTimeout(timer);
+          throw e;
+        }
         const calls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
         let roundText = '';
+        let first = true;
         for await (const chunk of stream) {
+          if (first) {
+            clearTimeout(timer);
+            first = false;
+          }
           for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
             if (part.text && !part.thought) {
               roundText += part.text;
@@ -89,9 +166,6 @@ export class Conversation {
       full += note;
       cb.onText?.(note);
       return full;
-    } catch (e) {
-      this.chat = this.make(snapshot);
-      throw e;
     }
   }
 }

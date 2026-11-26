@@ -3,7 +3,7 @@
 import type { FunctionDeclaration } from '@google/genai';
 import { getData } from '../data';
 import { getSettings } from '../settings';
-import { courseStanding, GRADE_LABELS, neededForGrade, projectedGrade, type AustrianGrade } from '../grading';
+import { courseStanding, GRADE_LABELS, neededForGrade, percentToGrade, projectedGrade, type AustrianGrade } from '../grading';
 import { absenceStatus } from '../attendance';
 import type { SyncItem, SyncOptions } from '../google/sync';
 
@@ -161,11 +161,19 @@ export async function executeTool(name: string, input: Record<string, unknown>, 
           };
         });
         return ok({
-          items: items.map((i) => ({
-            ...i,
-            course: courseName(i.courseId),
-            percent: i.score == null ? null : r1((i.score / i.maxScore) * 100),
-          })),
+          // item_grade = the Austrian grade of this single item; current_grade in standings = the whole course so far.
+          items: items.map((i) => {
+            const pct = i.score == null ? null : (i.score / i.maxScore) * 100;
+            const g = pct == null ? null : percentToGrade(pct, settings.gradeCutoffs);
+            return {
+              ...i,
+              course: courseName(i.courseId),
+              percent: pct == null ? null : r1(pct),
+              item_grade: g,
+              item_grade_label: g ? GRADE_LABELS[g].en : null,
+              class_average_percent: i.classAverage == null ? null : r1((i.classAverage / i.maxScore) * 100),
+            };
+          }),
           standings,
           cutoffs: settings.gradeCutoffs,
         });

@@ -6,7 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { SyncItem, SyncOutcome, SyncResult } from './sync';
-import { getGemini, GEMINI_MODEL } from '../ai/client';
+import { getGemini, withModelFallback } from '../ai/client';
 import { getSettings } from '../settings';
 
 export const TIMEZONE = 'Europe/Vienna';
@@ -184,16 +184,20 @@ export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   try {
     const ai = await getGemini();
     mcp = await connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined });
-    const res = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: buildSyncPrompt(toPromptItems(work)),
-      config: {
-        systemInstruction: SYSTEM,
-        temperature: 0,
-        tools: [mcpToTool(mcp)],
-        automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
-      },
-    });
+    const client = mcp;
+    // Overloaded model → next model. Safe to repeat: the prompt does Find-before-Create, so nothing is duplicated.
+    const res = await withModelFallback((model) =>
+      ai.models.generateContent({
+        model,
+        contents: buildSyncPrompt(toPromptItems(work)),
+        config: {
+          systemInstruction: SYSTEM,
+          temperature: 0,
+          tools: [mcpToTool(client)],
+          automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
+        },
+      }),
+    );
     const text = res.text ?? '';
     const arr = parseJsonArray(text);
     if (!arr) {
