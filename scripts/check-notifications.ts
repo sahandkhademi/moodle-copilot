@@ -36,29 +36,30 @@ if (ungraded) {
 }
 
 // Notice text
-const n = gradeNotice(MOCK_QUEUED_GRADE, MOCK_COURSES.find((c) => c.id === 104), cut, 'de');
-assert.ok(n.title.startsWith('📊 Neue Note in'), n.title);
-assert.ok(/: 1 \(90 %\) · Klassenschnitt 75 %$/.test(n.message), n.message);
-assert.ok(gradeNotice(MOCK_QUEUED_GRADE, undefined, cut, 'en').title.startsWith('📊 New grade'));
+const n = gradeNotice(MOCK_QUEUED_GRADE, MOCK_COURSES.find((c) => c.id === 104), cut);
+assert.ok(n.title.startsWith('New grade in'), n.title);
+assert.ok(!/[^\x00-\u2022\u2024-\uffff]|[\u{1F300}-\u{1FAFF}]/u.test(n.title + n.message), 'no emoji');
+assert.ok(/ \u2014 1 \(90%\) \u00b7 class average 75%$/.test(n.message), n.message);
+assert.ok(gradeNotice(MOCK_QUEUED_GRADE, undefined, cut).title.startsWith('New grade'));
 assert.deepEqual(parseNoticeId(n.id), { courseId: 104, gradeId: 'dbs-u3' });
 assert.deepEqual(parseNoticeId('absence:101'), { courseId: 101 });
 
 // Absence transitions
 const lim = DEFAULT_SETTINGS.absenceLimit;
 const aSnap = makeAbsenceSnapshot(MOCK_ATTENDANCE, lim);
-assert.deepEqual(absenceNotices(null, MOCK_ATTENDANCE, MOCK_COURSES, lim, 'de'), [], 'first run silent');
-assert.deepEqual(absenceNotices(aSnap, MOCK_ATTENDANCE, MOCK_COURSES, lim, 'de'), [], 'unchanged silent');
+assert.deepEqual(absenceNotices(null, MOCK_ATTENDANCE, MOCK_COURSES, lim), [], 'first run silent');
+assert.deepEqual(absenceNotices(aSnap, MOCK_ATTENDANCE, MOCK_COURSES, lim), [], 'unchanged silent');
 const logik = MOCK_ATTENDANCE.find((r) => r.courseId === 101)!;
 const worse = MOCK_ATTENDANCE.map((r) => (r === logik ? { ...r, absences: r.absences + 1 } : r));
-const out = absenceNotices(aSnap, worse, MOCK_COURSES, lim, 'de');
+const out = absenceNotices(aSnap, worse, MOCK_COURSES, lim);
 console.log('absence:', out.map((x) => x.message));
 assert.ok(out.length >= 0);
 const safeSnap = { ...aSnap, '101': 'safe' as const };
-const warn = absenceNotices(safeSnap, MOCK_ATTENDANCE, MOCK_COURSES, lim, 'de');
+const warn = absenceNotices(safeSnap, MOCK_ATTENDANCE, MOCK_COURSES, lim);
 assert.equal(warn.length, 1);
-assert.equal(warn[0]?.message, '🟠 Logik: nur noch 1 Fehlstunde erlaubt');
-const over = absenceNotices({ ...aSnap, '101': 'warning' as const }, MOCK_ATTENDANCE.map((r) => (r === logik ? { ...r, absences: 9 } : r)), MOCK_COURSES, lim, 'de');
-assert.ok(over.length === 1 && !!over[0]?.message.startsWith('🔴'));
+assert.equal(warn[0]?.message, `${MOCK_COURSES.find((c) => c.id === 101)!.fullname}: 1 more absence allowed`);
+const over = absenceNotices({ ...aSnap, '101': 'warning' as const }, MOCK_ATTENDANCE.map((r) => (r === logik ? { ...r, absences: 9 } : r)), MOCK_COURSES, lim);
+assert.ok(over.length === 1 && /limit exceeded/.test(over[0]!.message));
 
 // Badge
 const now = Date.parse('2026-01-01T12:00:00Z');

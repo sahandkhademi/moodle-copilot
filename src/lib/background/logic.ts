@@ -1,11 +1,9 @@
 // Pure logic for new-grade / absence notifications and the toolbar badge (plan 4.2, 4.4).
 // No chrome, no DOM: unit-checked by scripts/check-notifications.ts.
 import type { AttendanceRecord, Course, Deadline, GradeItem } from '../types';
-import type { GradeCutoffs, Settings } from '../settings';
+import type { GradeCutoffs } from '../settings';
 import { percentToGrade } from '../grading';
-import { absenceStatus, ABSENCE_EMOJI, type AbsenceState } from '../attendance';
-
-type Lang = Settings['language'];
+import { absenceStatus, type AbsenceState } from '../attendance';
 
 /** gradeId -> score (null = not graded yet) */
 export type GradeSnapshot = Record<string, number | null>;
@@ -32,18 +30,18 @@ export interface Notice {
   gradeId?: string;
 }
 
-export function gradeNotice(item: GradeItem, course: Course | undefined, cutoffs: GradeCutoffs, lang: Lang): Notice {
+export function gradeNotice(item: GradeItem, course: Course | undefined, cutoffs: GradeCutoffs, _lang?: unknown): Notice {
   const name = course?.fullname ?? course?.shortname ?? '';
   const pct = Math.round(((item.score ?? 0) / item.maxScore) * 100);
   const grade = percentToGrade(pct, cutoffs);
-  let message = `${item.name}: ${grade} (${pct} %)`;
+  let message = `${item.name} \u2014 ${grade} (${pct}%)`;
   if (item.classAverage != null) {
     const avg = Math.round((item.classAverage / item.maxScore) * 100);
-    message += ` · ${lang === 'de' ? 'Klassenschnitt' : 'Class average'} ${avg} %`;
+    message += ` \u00b7 class average ${avg}%`;
   }
   return {
     id: `grade:${item.courseId}:${item.id}`,
-    title: lang === 'de' ? `📊 Neue Note in ${name}` : `📊 New grade in ${name}`,
+    title: `New grade in ${name}`,
     message,
     courseId: item.courseId,
     gradeId: item.id,
@@ -64,7 +62,7 @@ export function absenceNotices(
   records: AttendanceRecord[],
   courses: Course[],
   defaultLimit: number,
-  lang: Lang,
+  _lang?: unknown,
 ): Notice[] {
   if (!prev) return [];
   const out: Notice[] = [];
@@ -75,19 +73,13 @@ export function absenceNotices(
     const c = courses.find((x) => x.id === r.courseId);
     const name = c?.fullname ?? c?.shortname ?? '';
     let text: string;
-    if (st.state === 'over') {
-      text = lang === 'de' ? 'Fehlstunden-Limit überschritten' : 'absence limit exceeded';
-    } else if (st.left <= 0) {
-      text = lang === 'de' ? 'keine Fehlstunde mehr erlaubt' : 'no more absences allowed';
-    } else if (lang === 'de') {
-      text = `nur noch ${st.left} Fehlstunde${st.left === 1 ? '' : 'n'} erlaubt`;
-    } else {
-      text = `only ${st.left} absence${st.left === 1 ? '' : 's'} left`;
-    }
+    if (st.state === 'over') text = 'absence limit exceeded';
+    else if (st.left <= 0) text = 'no more absences allowed';
+    else text = `${st.left} more absence${st.left === 1 ? '' : 's'} allowed`;
     out.push({
       id: `absence:${r.courseId}`,
-      title: lang === 'de' ? 'Anwesenheit' : 'Attendance',
-      message: `${ABSENCE_EMOJI[st.state]} ${name}: ${text}`,
+      title: 'Attendance',
+      message: `${name}: ${text}`,
       courseId: r.courseId,
     });
   }
