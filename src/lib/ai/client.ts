@@ -3,12 +3,14 @@ import { GoogleGenAI, ThinkingLevel, type ThinkingConfig } from '@google/genai';
 import { getSettings } from '../settings';
 
 /** Preferred model, then fallbacks. Gemini models regularly return 503 "high demand"; the demo must not stall on it. */
-export const GEMINI_MODEL = 'gemini-3.8-flash';
-export const GEMINI_FALLBACK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+// Speed first: flash-lite with low thinking answers in ~2.5 s and the snapshot + code-side math keep it accurate.
+// The bigger models are fallbacks (they were often 503 "high demand" or hanging during the hackathon).
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
+export const GEMINI_FALLBACK_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash'];
 export const GEMINI_MODELS: readonly string[] = [GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS];
 
 /** Give up on a model if it hasn't produced its first chunk within this time. */
-export const FIRST_CHUNK_TIMEOUT_MS = 30_000;
+export const FIRST_CHUNK_TIMEOUT_MS = 12_000;
 
 /** Weaker models that skip tools unless forced on the first round of a turn. */
 export const FORCE_TOOLS_MODELS = new Set(['gemini-3.5-flash-lite']);
@@ -18,9 +20,10 @@ export const FORCE_TOOLS_MODELS = new Set(['gemini-3.5-flash-lite']);
  * Tool answers are numbers copied from the snapshot / tool output, so almost no reasoning is needed.
  */
 export const THINKING_LEVELS: Record<string, ThinkingLevel | null> = {
-  'gemini-3.8-flash': ThinkingLevel.MINIMAL,
-  'gemini-3.6-flash': ThinkingLevel.MINIMAL,
-  'gemini-3.5-flash-lite': ThinkingLevel.MINIMAL,
+  // Measured: 3.8-flash rejects MINIMAL; on flash-lite LOW was faster than MINIMAL (2.5 s vs 6.4 s).
+  'gemini-3.8-flash': ThinkingLevel.LOW,
+  'gemini-3.6-flash': ThinkingLevel.LOW,
+  'gemini-3.5-flash-lite': ThinkingLevel.LOW,
 };
 
 /** Models that rejected a thinking level at runtime; they run on their default from then on. */
