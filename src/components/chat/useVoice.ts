@@ -17,7 +17,7 @@ export function openMicPermissionTab() {
 
 export type VoiceState = 'idle' | 'listening' | 'denied';
 
-export function useVoiceInput(opts: { lang: 'de' | 'en'; onInterim: (text: string) => void; onFinal: (text: string) => void }) {
+export function useVoiceInput(opts: { onInterim: (text: string) => void; onFinal: (text: string) => void }) {
   const [state, setState] = useState<VoiceState>('idle');
   const recRef = useRef<any>(null);
   const optsRef = useRef(opts);
@@ -36,7 +36,7 @@ export function useVoiceInput(opts: { lang: 'de' | 'en'; onInterim: (text: strin
     stop();
     const rec = new SR();
     recRef.current = rec;
-    rec.lang = optsRef.current.lang === 'de' ? 'de-AT' : 'en-US';
+    rec.lang = 'en-US';
     rec.interimResults = true;
     rec.continuous = false;
     rec.maxAlternatives = 1;
@@ -95,7 +95,7 @@ export function stripMarkdown(md: string): string {
     .trim();
 }
 
-export function useReadAloud(lang: 'de' | 'en') {
+export function useReadAloud() {
   const [speaking, setSpeaking] = useState(false);
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
@@ -112,13 +112,13 @@ export function useReadAloud(lang: 'de' | 'en') {
       if (!text) return;
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang === 'de' ? 'de-AT' : 'en-US';
+      u.lang = 'en-US';
       u.onend = () => setSpeaking(false);
       u.onerror = () => setSpeaking(false);
       setSpeaking(true);
       window.speechSynthesis.speak(u);
     },
-    [lang, supported],
+    [supported],
   );
 
   useEffect(() => () => {
