@@ -47,7 +47,7 @@ Work through this file top to bottom. Tick each box when it's done **and committ
   - grades → AJAX if allowed, else scrape `grade/report/user/index.php?id=…`
   - attendance (`mod_attendance`) → scrape the attendance view page
   - Write down what worked here ⤵︎ and pick real or mock per data type
-- [ ] **1.5 Moodle data layer**: `getCourses()`, `getDeadlines()`, `getGrades(courseId)`, `getAttendance(courseId)`, cached in `chrome.storage`
+- [x] **1.5 Moodle data layer**: `getCourses()`, `getDeadlines()`, `getGrades(courseId)`, `getAttendance(courseId)`, cached in `chrome.storage`
 
 ## Phase 2 — The two hero features
 

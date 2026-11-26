@@ -21,7 +21,9 @@
     "@types/react": "^19.3.3",
     "@types/react-dom": "^19.3.0",
     "@wxt-dev/module-react": "^1.2.2",
+    "linkedom": "^0.18.15",
     "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "wxt": "^0.21.5"
   }
