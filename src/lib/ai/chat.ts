@@ -83,6 +83,7 @@ export class Conversation {
   async send(text: string, cb: ChatCallbacks = {}): Promise<string> {
     await this.refreshSnapshot().catch((e) => console.warn('[chat] snapshot refresh failed', e));
     const snapshot = structuredClone(this.chat.getHistory(true));
+    let sweeps = 0; // full passes over the model list
     for (;;) {
       let emitted = false;
       const tracked: ChatCallbacks = {
@@ -113,6 +114,16 @@ export class Conversation {
         if (canFallback) {
           console.warn(`[chat] ${this.model} unavailable, switching model`, e);
           this.modelIdx++;
+          this.chat = this.make(stripSignatures(snapshot));
+          continue;
+        }
+        // Every model is busy (Google "high demand" spikes last seconds): wait a moment and sweep the list again.
+        if (!emitted && isRetriableModelError(e) && sweeps < 2) {
+          sweeps++;
+          const wait = sweeps * 1500 + Math.random() * 500;
+          console.warn(`[chat] all models busy, retrying in ${Math.round(wait)} ms (sweep ${sweeps})`);
+          await new Promise((r) => setTimeout(r, wait));
+          this.modelIdx = 0;
           this.chat = this.make(stripSignatures(snapshot));
           continue;
         }
