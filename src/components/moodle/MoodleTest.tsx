@@ -1,5 +1,7 @@
-// "Verbindung testen" control in Settings: runs every Moodle call once and shows a checklist.
+// "Test connection" control in Settings: runs every Moodle call once and shows a checklist.
 import { useState } from 'react';
+import { CheckCircle2, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/moodle';
 import { useSettings } from '@/lib/settings';
 import { createMoodleSource } from '@/lib/data/moodle';
 
@@ -27,32 +29,32 @@ export function MoodleTest() {
     let courses: Awaited<ReturnType<typeof src.getCourses>> = [];
     try {
       courses = await src.getCourses();
-      out.push({ label: `Kurse: ${courses.length}`, ok: true });
+      out.push({ label: `Courses: ${courses.length}`, ok: true });
     } catch (e) {
-      out.push({ label: 'Kurse', ok: false, error: msg(e) });
+      out.push({ label: 'Courses', ok: false, error: msg(e) });
     }
     try {
       const d = await src.getDeadlines();
-      out.push({ label: `Termine: ${d.length}`, ok: true });
+      out.push({ label: `Deadlines: ${d.length}`, ok: true });
     } catch (e) {
-      out.push({ label: 'Termine', ok: false, error: msg(e) });
+      out.push({ label: 'Deadlines', ok: false, error: msg(e) });
     }
     if (courses[0]) {
       try {
         const g = await src.getGrades(courses[0].id);
-        out.push(g.length ? { label: `Noten (${courses[0].fullname}): ${g.length}`, ok: true } : { label: `Noten (${courses[0].fullname})`, ok: false, error: 'keine Noten gefunden' });
+        out.push(g.length ? { label: `Grades (${courses[0].fullname}): ${g.length}`, ok: true } : { label: `Grades (${courses[0].fullname})`, ok: false, error: 'no grades found' });
       } catch (e) {
-        out.push({ label: `Noten (${courses[0].fullname})`, ok: false, error: msg(e) });
+        out.push({ label: `Grades (${courses[0].fullname})`, ok: false, error: msg(e) });
       }
       try {
         const a = await src.getAttendance();
-        out.push(a.length ? { label: `Anwesenheit: ${a.length} Kurs(e)`, ok: true } : { label: 'Anwesenheit', ok: false, error: 'nicht gefunden' });
+        out.push(a.length ? { label: `Attendance: ${a.length} course${a.length === 1 ? '' : 's'}`, ok: true } : { label: 'Attendance', ok: false, error: 'not found' });
       } catch (e) {
-        out.push({ label: 'Anwesenheit', ok: false, error: msg(e) });
+        out.push({ label: 'Attendance', ok: false, error: msg(e) });
       }
     } else {
-      out.push({ label: 'Noten', ok: false, error: 'übersprungen (keine Kurse)' });
-      out.push({ label: 'Anwesenheit', ok: false, error: 'übersprungen (keine Kurse)' });
+      out.push({ label: 'Grades', ok: false, error: 'skipped (no courses)' });
+      out.push({ label: 'Attendance', ok: false, error: 'skipped (no courses)' });
     }
     setChecks(out);
     setRunning(false);
@@ -60,21 +62,18 @@ export function MoodleTest() {
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
-        onClick={run}
-        disabled={running}
-        className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
-      >
-        {running ? 'Teste …' : 'Verbindung testen'}
-      </button>
+      <Button variant="outline" size="sm" onClick={run} busy={running}>
+        {running ? 'Testing…' : 'Test connection'}
+      </Button>
       {checks && (
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-1 text-[0.9375rem]">
           {checks.map((c) => (
-            <li key={c.label} className="flex flex-wrap gap-x-2">
-              <span className={c.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{c.ok ? '✓' : '✗'}</span>
-              <span>{c.label}</span>
-              {c.error && <span className="text-xs text-slate-500">{c.error}</span>}
+            <li key={c.label} className="flex items-start gap-1.5">
+              {c.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />}
+              <span>
+                {c.label}
+                {c.error && <span className="ml-1.5 text-[0.8125rem] text-muted">{c.error}</span>}
+              </span>
             </li>
           ))}
         </ul>
