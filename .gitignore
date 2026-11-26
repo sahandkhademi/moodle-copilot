@@ -1,0 +1,19 @@
+# deps & builds
+node_modules/
+dist/
+.output/
+.wxt/
+*.zip
+*.crx
+*.pem
+
+# secrets — never commit keys
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
