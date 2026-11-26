@@ -1,0 +1,5 @@
+[{"error":false,"data":{"courses":[
+{"id":101,"fullname":"Logik","shortname":"LOG","idnumber":"","visible":true,"viewurl":"https://moodle.example.at/course/view.php?id=101","progress":42,"hasprogress":true,"isfavourite":false,"hidden":false,"showshortname":false,"coursecategory":"Informatik"},
+{"id":102,"fullname":"Mathematik 2","shortname":"MAT2","idnumber":"","visible":true,"viewurl":"https://moodle.example.at/course/view.php?id=102","progress":60,"hasprogress":true,"isfavourite":false,"hidden":false,"showshortname":false,"coursecategory":"Mathematik"},
+{"id":103,"fullname":"Programmieren 2","shortname":"PRG2","idnumber":"","visible":true,"viewurl":"https://moodle.example.at/course/view.php?id=103","progress":null,"hasprogress":false,"isfavourite":true,"hidden":false,"showshortname":false,"coursecategory":"Informatik"}
+],"nextoffset":3}}]
