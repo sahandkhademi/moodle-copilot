@@ -20,10 +20,10 @@ export const FORCE_TOOLS_MODELS = new Set(['gemini-3.5-flash-lite']);
  * Tool answers are numbers copied from the snapshot / tool output, so almost no reasoning is needed.
  */
 export const THINKING_LEVELS: Record<string, ThinkingLevel | null> = {
-  // Measured: 3.8-flash rejects MINIMAL; on flash-lite LOW was faster than MINIMAL (2.5 s vs 6.4 s).
-  'gemini-3.8-flash': ThinkingLevel.LOW,
-  'gemini-3.6-flash': ThinkingLevel.LOW,
-  'gemini-3.5-flash-lite': ThinkingLevel.LOW,
+  // Benchmarked (3 runs each, data snapshot on): MINIMAL fastest on flash-lite; 3.8-flash rejects MINIMAL.
+  'gemini-3.8-flash': ThinkingLevel.LOW, // rejects MINIMAL with a 400 (verified)
+  'gemini-3.6-flash': ThinkingLevel.MINIMAL,
+  'gemini-3.5-flash-lite': ThinkingLevel.MINIMAL,
 };
 
 /** Models that rejected a thinking level at runtime; they run on their default from then on. */

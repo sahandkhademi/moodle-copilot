@@ -75,10 +75,13 @@ for (const q of QUESTIONS) {
     let text = '';
     try {
       const conv = await Conversation.create(ai, { model: pinModel });
-      text = await conv.send(q, {
-        onText: () => (tFirst = Number.isNaN(tFirst) ? performance.now() - t0 : tFirst),
-        onToolStart: (n) => tools.push(n),
-      });
+      text = await Promise.race([
+        conv.send(q, {
+          onText: () => (tFirst = Number.isNaN(tFirst) ? performance.now() - t0 : tFirst),
+          onToolStart: (n) => tools.push(n),
+        }),
+        new Promise<string>((_, rej) => setTimeout(() => rej(new Error('bench: run exceeded 90s')), 90_000)),
+      ]);
     } catch (e) {
       console.log(`  ERROR ${(e as Error).message.slice(0, 120)}`);
       continue;

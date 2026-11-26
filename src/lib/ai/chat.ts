@@ -132,7 +132,8 @@ export class Conversation {
         const timer = setTimeout(() => ctrl.abort(new Error('Gemini timed out')), FIRST_CHUNK_TIMEOUT_MS);
         let stream: AsyncGenerator<import('@google/genai').GenerateContentResponse>;
         try {
-          const force = round === 0 && FORCE_TOOLS_MODELS.has(this.model);
+          // Forcing a tool call on every turn defeats the snapshot, so it is only done without one.
+          const force = round === 0 && !this.snap && FORCE_TOOLS_MODELS.has(this.model);
           stream = await this.chat.sendMessageStream({
             message,
             config: {
