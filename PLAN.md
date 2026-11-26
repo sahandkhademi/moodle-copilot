@@ -64,11 +64,11 @@ Work through this file top to bottom. Tick each box when it's done **and committ
 
 Principle: **one click or one sentence, and it's in Google.** No downloads, no copy-paste, no extra tabs.
 
-- [ ] **3.1 Zapier setup (one time, ~10 min)**: on zapier.com, create an MCP server and enable *Google Calendar: Create Detailed Event*, *Google Calendar: Find Event* and *Google Tasks: Create Task*, connected to our Google account. Paste the MCP server URL and token into the extension's settings
-- [ ] **3.2 MCP connector in the chat**: add the Zapier server to the Claude request (`mcp_servers` + `mcp_toolset`, beta `mcp-client-2025-11-20`). Check that Claude can list and call the Zapier tools
+- [x] **3.1 Zapier setup (one time, ~10 min)**: on zapier.com, create an MCP server and enable *Google Calendar: Create Detailed Event*, *Google Calendar: Find Event* and *Google Tasks: Create Task*, connected to our Google account. Paste the MCP server URL and token into the extension's settings
+- [x] **3.2 MCP connector in the chat**: add the Zapier server to the Claude request (`mcp_servers` + `mcp_toolset`, beta `mcp-client-2025-11-20`). Check that Claude can list and call the Zapier tools
 - [ ] **3.3 Ask the chat to do it**: "Put my logic exam in my calendar", "Make tasks for everything due this week". Show a confirmation card listing what will be created, then one tap writes it
-- [ ] **3.4 One-click buttons on the dashboard**: "📅 Add to Calendar" per deadline and "Sync all to Calendar + Tasks" at the top. They run the same Zapier tools, so no typing is needed
-- [ ] **3.5 No duplicates**: store Moodle-event-ID → "synced" locally, and use *Find Event* before creating. Show a ✓ on deadlines that are already synced
+- [x] **3.4 One-click buttons on the dashboard**: "📅 Add to Calendar" per deadline and "Sync all to Calendar + Tasks" at the top. They run the same Zapier tools, so no typing is needed
+- [x] **3.5 No duplicates**: store Moodle-event-ID → "synced" locally, and use *Find Event* before creating. Show a ✓ on deadlines that are already synced
 - [ ] *(only if Zapier blocks us)* **3.6 Direct Google APIs** through `chrome.identity` OAuth, as plan B. Skip otherwise
 
 > Watch the Zapier free-plan task limit: every create counts. Use mock mode while rehearsing, and switch to live Zapier for the real run.
