@@ -99,11 +99,17 @@ Principle: **one click or one sentence, and it's in Google.** No downloads, no c
 
 - [ ] **5.1 Page-aware context** — the side panel knows which Moodle page you're on: "Summarize this assignment", "What does this task actually want?"
 - [ ] **5.2 Study planner** — before an exam, Gemini proposes study blocks and puts them in free slots in Google Calendar
-- [ ] **5.3 Morning briefing** — one card: today's classes, what's due, new grades, new announcements
+- [x] **5.3 Daily briefing** — plain-English "You're good to go… only 1 more absence in Logic" built locally from the data: top of the Moodle Dashboard, top of the Assistant, and a 07:30 Chrome notification
 - [ ] **5.4 Course-material Q&A** — ask about a lecture PDF ("Explain slide 12 of week 5"); Gemini reads the PDF
 - [ ] **5.5 Quiz me** — generate flashcards / practice questions from course material
 - [ ] **5.6 Email the teacher** — draft a polite extension request or question in German, shown for review, never sent automatically
 - [ ] **5.7 Workload heatmap** — calendar heatmap of how busy each week is
+
+## Phase 5b — One dashboard: Copilot inside Moodle
+
+- [x] **5b.1 Setting "Show Copilot inside Moodle"** (default on): no second dashboard in the side panel; the panel is Assistant + Settings
+- [x] **5b.2 Content script on Moodle's Dashboard (/my/)**: briefing card on top, Google button on each Timeline item + "Add N to Google" next to the Timeline title, a "Grades and attendance" block (needed-for-next-grade, what-if, absences, Ask Copilot). Moodle's own CSS classes only
+- [x] **5b.3 Background bridge**: Google sync runs in the background (no page CORS); "Ask Copilot" opens the side panel with the question; notification clicks open the Moodle Dashboard on that course
 
 ## Phase 6 — Demo polish
 

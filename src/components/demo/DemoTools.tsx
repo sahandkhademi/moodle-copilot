@@ -1,6 +1,6 @@
 // Demo helpers in Settings (mock mode only): simulate a new grade, reset the demo.
 import { useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { Bell, RotateCcw } from 'lucide-react';
 import { Button, Select } from '@/components/ui/moodle';
 import { useSettings } from '@/lib/settings';
 import { KEYS, setItem } from '@/lib/storage';
@@ -72,6 +72,13 @@ export function DemoTools() {
     setBusy(null);
   };
 
+  const briefing = async () => {
+    setBusy('brief');
+    await ping({ type: 'briefing-now' });
+    flash('Morning briefing sent');
+    setBusy(null);
+  };
+
   return (
     <div className="space-y-2 border-t border-line pt-3">
       <div className="flex items-center gap-2">
@@ -86,6 +93,10 @@ export function DemoTools() {
           ))}
         </Select>
       </div>
+      <Button variant="secondary" disabled={busy !== null} busy={busy === 'brief'} onClick={briefing} className="w-full">
+        {busy !== 'brief' && <Bell className="h-3.5 w-3.5" />}
+        Send morning briefing now
+      </Button>
       <div className="flex items-center justify-between gap-2">
         <Button variant="outline" disabled={busy !== null} busy={busy === 'reset'} onClick={reset}>
           {busy !== 'reset' && <RotateCcw className="h-3.5 w-3.5" />}

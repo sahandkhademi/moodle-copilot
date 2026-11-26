@@ -22,6 +22,11 @@ export interface Settings {
   absenceLimit: number;
   /** Read chat answers aloud (feature 4.3). */
   voiceReadAloud: boolean;
+  /**
+   * Show Copilot inside Moodle's own Dashboard (grades block, absence alerts, Google buttons on the Timeline)
+   * instead of a second dashboard in the side panel. The side panel then only has the Assistant + Settings.
+   */
+  showInMoodle: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gradeCutoffs: { 1: 89, 2: 76, 3: 63, 4: 50 },
   absenceLimit: 0.2,
   voiceReadAloud: false,
+  showInMoodle: true,
 };
 
 export async function getSettings(): Promise<Settings> {

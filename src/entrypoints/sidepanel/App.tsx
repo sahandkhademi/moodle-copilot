@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import ChatView from '@/components/chat/ChatView';
 import DashboardView from '@/components/dashboard/DashboardView';
@@ -28,8 +28,15 @@ function Wordmark() {
 
 export default function App() {
   const [settings] = useSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   useSidepanelPresence();
-  const [tab, setTab] = useState<Tab>('dashboard');
+  const [tab, setTab] = useState<Tab>('chat');
+  // In "inside Moodle" mode the dashboard lives on Moodle's own page, so the panel has no Dashboard tab.
+  const tabs = settings.showInMoodle ? TABS.filter((t) => t.id !== 'dashboard') : TABS;
+  useEffect(() => {
+    if (settings.showInMoodle && tab === 'dashboard') setTab('chat');
+  }, [settings.showInMoodle, tab]);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   const [unseen, setUnseen] = useState(0);
 
@@ -38,7 +45,8 @@ export default function App() {
     const handle = (f: unknown) => {
       const req = f as FocusRequest | undefined;
       if (!req || Date.now() - req.at > 60_000) return;
-      setTab(req.tab);
+      // Dashboard requests (e.g. a grade notification) open the Moodle page instead when the dashboard lives there.
+      setTab(req.tab === 'dashboard' && settingsRef.current.showInMoodle ? 'chat' : req.tab);
       setFocus(req);
     };
     getItem<FocusRequest | undefined>(KEYS.focus, undefined).then(handle);
@@ -58,7 +66,7 @@ export default function App() {
           <Wordmark />
           <div className="flex items-center gap-3">
             {settings.mockMode && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-muted">Demo data</span>}
-            <button className="relative text-ink" title="Notifications" onClick={() => setTab('dashboard')}>
+            <button className="relative text-ink" title="Notifications" onClick={() => setTab(settings.showInMoodle ? 'chat' : 'dashboard')}>
               <Bell className="h-5 w-5" strokeWidth={2} />
               {unseen > 0 && (
                 <span className="absolute -right-2 -top-1.5 rounded-sm bg-danger px-1 text-[0.65rem] font-bold leading-4 text-white">{unseen}</span>
@@ -67,7 +75,7 @@ export default function App() {
           </div>
         </div>
         <nav className="flex gap-1 px-2">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}

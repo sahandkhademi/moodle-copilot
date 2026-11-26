@@ -26,6 +26,7 @@ import type { SyncItem, SyncOptions, SyncResult } from '@/lib/google/sync';
 import { useSettings } from '@/lib/settings';
 import type { FocusRequest } from '@/lib/storage';
 import Markdown from './Markdown';
+import { BriefingNote } from './BriefingNote';
 import { useReadAloud, useVoiceInput } from './useVoice';
 
 interface Proposal {
@@ -227,6 +228,7 @@ export default function ChatView({ focus, onNavigate }: { focus: FocusRequest | 
               <h2 className="text-[1.25rem] font-bold text-ink">Hi! What would you like to know?</h2>
               <p className="mt-1 text-muted">I can look into your grades, deadlines and attendance.</p>
             </div>
+            <BriefingNote />
             {noKey ? (
               <Block title={<span className="flex items-center gap-2 font-bold"><KeyRound className="h-4 w-4 text-brand-500" />Gemini API key missing</span>}>
                 <p className="text-muted">Add your Gemini API key in Settings and you are good to go.</p>

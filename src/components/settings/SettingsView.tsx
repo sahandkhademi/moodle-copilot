@@ -74,6 +74,12 @@ export default function SettingsView() {
           <Field label="Moodle URL" hint="Log in to Moodle in this browser. Copilot uses that session.">
             <Input placeholder="https://moodle.jku.at" defaultValue={s.moodleUrl} onBlur={(e) => set({ moodleUrl: e.target.value.trim().replace(/\/$/, '') })} />
           </Field>
+          <Toggle
+            label="Show Copilot inside Moodle"
+            hint="Adds your grades, absence warnings and Google buttons to Moodle's own Dashboard. The side panel then only shows the Assistant."
+            checked={s.showInMoodle}
+            onChange={(v) => set({ showInMoodle: v })}
+          />
           <MoodleTest />
         </div>
       </Block>
