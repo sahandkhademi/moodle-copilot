@@ -18,7 +18,7 @@ export const FORCE_TOOLS_MODELS = new Set(['gemini-3.5-flash-lite']);
  * Tool answers are numbers copied from the snapshot / tool output, so almost no reasoning is needed.
  */
 export const THINKING_LEVELS: Record<string, ThinkingLevel | null> = {
-  'gemini-3.8-flash': ThinkingLevel.MINIMAL,
+  'gemini-3.8-flash': ThinkingLevel.LOW, // rejects MINIMAL with a 400 (verified)
   'gemini-3.6-flash': ThinkingLevel.MINIMAL,
   'gemini-3.5-flash-lite': ThinkingLevel.MINIMAL,
 };
