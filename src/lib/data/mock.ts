@@ -71,8 +71,8 @@ export const MOCK_ATTENDANCE: AttendanceRecord[] = [
   { courseId: 101, totalSessions: 15, sessionsHeld: 10, absences: 2, excused: 1, url: `${MOODLE}/mod/attendance/view.php?id=1101` },
   { courseId: 102, totalSessions: 28, sessionsHeld: 19, absences: 1, url: `${MOODLE}/mod/attendance/view.php?id=1102` },
   { courseId: 103, totalSessions: 30, sessionsHeld: 20, absences: 2, url: `${MOODLE}/mod/attendance/view.php?id=1103` },
-  { courseId: 104, totalSessions: 14, sessionsHeld: 9, absences: 0, url: `${MOODLE}/mod/attendance/view.php?id=1104` },
-  { courseId: 105, totalSessions: 14, sessionsHeld: 9, absences: 1, url: `${MOODLE}/mod/attendance/view.php?id=1105` },
+  { courseId: 104, totalSessions: 28, sessionsHeld: 18, absences: 0, url: `${MOODLE}/mod/attendance/view.php?id=1104` },
+  { courseId: 105, totalSessions: 28, sessionsHeld: 18, absences: 1, url: `${MOODLE}/mod/attendance/view.php?id=1105` },
 ];
 
 export const MOCK_DEADLINES: Deadline[] = [
