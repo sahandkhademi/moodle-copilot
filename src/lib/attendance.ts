@@ -22,4 +22,3 @@ export function absenceStatus(rec: AttendanceRecord, defaultLimit: number): Abse
   return { courseId: rec.courseId, absences: rec.absences, allowed, left, state, limitPercent };
 }
 
-export const ABSENCE_EMOJI: Record<AbsenceState, string> = { safe: '🟢', warning: '🟠', over: '🔴' };

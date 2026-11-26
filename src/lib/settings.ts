@@ -8,8 +8,6 @@ export interface Settings {
   moodleUrl: string;
   /** Google AI Studio key (Gemini). */
   geminiApiKey: string;
-  /** @deprecated Claude was replaced by Gemini. Kept only until all branches are merged. */
-  anthropicApiKey: string;
   /** Zapier MCP server URL from mcp.zapier.com (Google Calendar + Tasks actions enabled). */
   zapierMcpUrl: string;
   /** Optional bearer token, if the Zapier server URL needs one. */
@@ -29,7 +27,6 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   moodleUrl: '',
   geminiApiKey: '',
-  anthropicApiKey: '',
   zapierMcpUrl: '',
   zapierMcpToken: '',
   mockMode: true,
