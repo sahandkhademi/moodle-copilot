@@ -8,7 +8,8 @@ import type { Settings } from '@/lib/settings';
 import { courseStanding, GRADE_LABELS, neededForGrade, projectedGrade, type AustrianGrade } from '@/lib/grading';
 import { absenceStatus } from '@/lib/attendance';
 import { buildBriefing, plainCourse } from '@/lib/briefing';
-import { openAssistant, syncViaBackground } from '@/lib/inpage/bridge';
+import { openAssistant, syncViaBackground, undoViaBackground } from '@/lib/inpage/bridge';
+import { useGoogleToggle } from '@/lib/google/useGoogleToggle';
 import type { SyncItem } from '@/lib/google/sync';
 
 export interface MoodleData {
@@ -62,49 +63,50 @@ export function BriefingCard({ data, settings }: { data: MoodleData | null; sett
 
 // ---------------------------------------------------------------- Timeline: per-item Google button
 
-export function TimelineGoogleButton({ item, alreadySynced }: { item: SyncItem; alreadySynced: boolean }) {
-  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>(alreadySynced ? 'done' : 'idle');
-  const [err, setErr] = useState('');
-  useEffect(() => {
-    if (alreadySynced) setState('done');
-  }, [alreadySynced]);
-  const run = async () => {
-    if (state === 'busy' || state === 'done') return;
-    setState('busy');
-    try {
-      const [r] = await syncViaBackground([item], { calendar: true, tasks: true });
-      const failed = !r || r.calendar === 'failed' || r.tasks === 'failed';
-      setErr(r?.error ?? '');
-      setState(failed ? 'error' : 'done');
-    } catch (e) {
-      setErr(String(e));
-      setState('error');
-    }
-  };
-  const title = state === 'done' ? 'In Google Calendar and Tasks' : state === 'error' ? `Couldn't add to Google: ${err}` : 'Add to Google Calendar and Tasks';
-  const Icon = state === 'busy' ? Loader2 : state === 'done' ? CalendarCheck : state === 'error' ? CalendarX : CalendarPlus;
-  const color = state === 'done' ? '#357a32' : state === 'error' ? '#ca3120' : '#0084bb';
+const BOTH = { calendar: true, tasks: true };
+
+function UndoLink({ onClick, busy }: { onClick: () => void; busy: boolean }) {
   return (
-    <button type="button" className="btn btn-link btn-sm p-1 ms-1" title={title} aria-label={title} onClick={run} style={{ color, lineHeight: 1 }}>
-      <Icon size={18} className={state === 'busy' ? 'copilot-spin' : undefined} />
+    <button type="button" className="btn btn-link btn-sm p-0 ms-1 align-baseline" style={{ fontSize: '0.8rem' }} onClick={onClick} disabled={busy} title="Remove from Google Calendar and Tasks">
+      {busy ? 'Removing…' : 'Undo'}
     </button>
   );
 }
 
-export function TimelineSyncAll({ items, syncedCount }: { items: SyncItem[]; syncedCount: number }) {
-  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
-  const todo = items.length - syncedCount;
-  if (!items.length) return null;
-  const run = async () => {
-    setState('busy');
-    await syncViaBackground(items, { calendar: true, tasks: true }).catch(() => []);
-    setState('done');
-  };
-  const done = state === 'done' || todo <= 0;
+/** Calendar icon next to a Timeline item: one click adds (tick shows instantly), Undo is always there afterwards. */
+export function TimelineGoogleButton({ item, alreadySynced }: { item: SyncItem; alreadySynced: boolean }) {
+  const t = useGoogleToggle({ ids: [item.deadline.id], alreadySynced, add: () => syncViaBackground([item], BOTH), undo: undoViaBackground });
+  const added = t.phase === 'added' || t.phase === 'undoing';
+  const title = t.phase === 'error' ? `Couldn't add to Google: ${t.error} (click to retry)` : added ? (t.pending ? 'Adding to Google…' : 'In Google Calendar and Tasks') : 'Add to Google Calendar and Tasks';
+  const Icon = t.phase === 'undoing' ? Loader2 : added ? CalendarCheck : t.phase === 'error' ? CalendarX : CalendarPlus;
+  const color = added ? '#357a32' : t.phase === 'error' ? '#ca3120' : '#0084bb';
   return (
-    <button type="button" className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center" style={{ gap: 6, color: '#1d2125', borderColor: '#8f959e' }} disabled={state === 'busy' || done} onClick={run} title="Adds the next 7 days to Google Calendar and Tasks">
-      {state === 'busy' ? <Loader2 size={14} className="copilot-spin" /> : done ? <CalendarCheck size={14} /> : <CalendarPlus size={14} />}
-      {state === 'busy' ? `Adding ${todo}…` : done ? 'All in Google' : `Add ${todo} to Google`}
+    <span className="d-inline-flex align-items-center text-nowrap">
+      <button type="button" className="btn btn-link btn-sm p-1 ms-1" title={title} aria-label={title} onClick={added ? undefined : t.add} style={{ color, lineHeight: 1, cursor: added ? 'default' : 'pointer' }}>
+        <Icon size={18} className={t.phase === 'undoing' ? 'copilot-spin' : t.pending ? 'copilot-pulse' : undefined} />
+      </button>
+      {added && <UndoLink onClick={t.undo} busy={t.phase === 'undoing'} />}
+    </span>
+  );
+}
+
+export function TimelineSyncAll({ items, syncedCount }: { items: SyncItem[]; syncedCount: number }) {
+  const todo = items.length - syncedCount;
+  const t = useGoogleToggle({ ids: items.map((i) => i.deadline.id), alreadySynced: items.length > 0 && todo <= 0, add: () => syncViaBackground(items, BOTH), undo: undoViaBackground });
+  if (!items.length) return null;
+  const btn = { gap: 6, color: '#1d2125', borderColor: '#8f959e' };
+  if (t.phase === 'added' || t.phase === 'undoing') {
+    return (
+      <span className="d-inline-flex align-items-center small" style={{ gap: 6, color: '#357a32' }}>
+        <CalendarCheck size={14} className={t.pending ? 'copilot-pulse' : undefined} /> {items.length} in Google
+        <UndoLink onClick={t.undo} busy={t.phase === 'undoing'} />
+      </span>
+    );
+  }
+  return (
+    <button type="button" className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center" style={btn} onClick={t.add} title={t.phase === 'error' ? t.error : 'Adds the next 7 days to Google Calendar and Tasks'}>
+      {t.phase === 'error' ? <CalendarX size={14} /> : <CalendarPlus size={14} />}
+      {t.phase === 'error' ? 'Retry' : `Add ${todo} to Google`}
     </button>
   );
 }

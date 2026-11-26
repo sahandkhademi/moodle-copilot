@@ -4,7 +4,7 @@ import { parseNoticeId } from '@/lib/background/logic';
 import { getSettings } from '@/lib/settings';
 import { getData } from '@/lib/data';
 import { buildBriefing } from '@/lib/briefing';
-import { syncToGoogle } from '@/lib/google/sync';
+import { prewarmGoogle, syncToGoogle, undoGoogle } from '@/lib/google/sync';
 import type { BridgeMessage } from '@/lib/inpage/bridge';
 
 const BRIEFING_HOUR = 7;
@@ -88,6 +88,14 @@ export default defineBackground(() => {
       if (m?.type === 'google-sync') {
         // From the Moodle page: run the sync here (host permissions, no page CORS).
         syncToGoogle(m.items, m.opts).then(sendResponse, (e) => sendResponse(m.items.map((i) => ({ deadlineId: i.deadline.id, calendar: 'failed', tasks: 'failed', error: String(e) }))));
+        return true;
+      }
+      if (m?.type === 'google-undo') {
+        undoGoogle(m.deadlineIds).then(sendResponse, (e) => sendResponse(m.deadlineIds.map((id) => ({ deadlineId: id, ok: false, error: String(e) }))));
+        return true;
+      }
+      if (m?.type === 'google-prewarm') {
+        void prewarmGoogle().finally(() => sendResponse({ ok: true }));
         return true;
       }
       if (m?.type === 'open-panel') {

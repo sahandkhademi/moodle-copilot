@@ -1,7 +1,7 @@
 // Confirmation card shown before anything is written to Google (plan 3.3). Used inside the chat.
 import { useMemo, useState } from 'react';
 import { CalendarDays, Check, ListChecks, X, type LucideIcon } from 'lucide-react';
-import { syncToGoogle, type SyncItem, type SyncOptions, type SyncOutcome, type SyncResult } from '@/lib/google/sync';
+import { undoGoogle, syncToGoogle, type SyncItem, type SyncOptions, type SyncOutcome, type SyncResult } from '@/lib/google/sync';
 import { Block, Button, Spinner } from '@/components/ui/moodle';
 import { failedResult, useSynced } from './shared';
 
@@ -12,7 +12,7 @@ export interface ConfirmGoogleSyncProps {
   onCancel?: () => void;
 }
 
-type Phase = 'ask' | 'busy' | 'done' | 'cancelled';
+type Phase = 'ask' | 'busy' | 'done' | 'cancelled' | 'undoing' | 'undone';
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -67,9 +67,22 @@ export function ConfirmGoogleSync({ items, defaultOptions = { calendar: true, ta
     onDone?.(rs);
   };
 
+  const undo = async () => {
+    const ids = [...results.values()].filter((r) => !failedResult(r)).map((r) => r.deadlineId);
+    setPhase('undoing');
+    const rs = await undoGoogle(ids);
+    const bad = rs.find((r) => !r.ok);
+    if (bad) {
+      setUndoError(bad.error ?? "Couldn't undo");
+      setPhase('done');
+    } else setPhase('undone');
+  };
+  const [undoError, setUndoError] = useState('');
+
   const shown = phase === 'ask' || phase === 'cancelled' ? items : chosen;
   const failedCount = [...results.values()].filter(failedResult).length;
-  const title = phase === 'done' ? (failedCount ? `${chosen.length - failedCount} of ${chosen.length} added` : 'Added to Google') : 'Add to Google';
+  const title =
+    phase === 'undone' ? 'Removed from Google' : phase === 'done' || phase === 'undoing' ? (failedCount ? `${chosen.length - failedCount} of ${chosen.length} added` : 'Added to Google') : 'Add to Google';
 
   return (
     <Block title={title} className="w-full max-w-[420px] text-[0.9375rem]">
@@ -137,10 +150,26 @@ export function ConfirmGoogleSync({ items, defaultOptions = { calendar: true, ta
           <Spinner /> Adding to Google…
         </div>
       )}
-      {phase === 'done' && failedCount > 0 && (
-        <div className="mt-3 border-t border-line pt-3">
-          <Button variant="outline" size="sm" onClick={() => setPhase('ask')}>
-            Try again
+      {(phase === 'done' || phase === 'undoing') && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          {failedCount < chosen.length && (
+            <Button variant="outline" size="sm" onClick={undo} busy={phase === 'undoing'}>
+              Undo
+            </Button>
+          )}
+          {failedCount > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setPhase('ask')}>
+              Try again
+            </Button>
+          )}
+          {undoError && <span className="text-[0.8125rem] text-danger">{undoError}</span>}
+        </div>
+      )}
+      {phase === 'undone' && (
+        <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 text-[0.8125rem] text-muted">
+          Removed from Google Calendar and Tasks.
+          <Button variant="link" size="sm" onClick={() => setPhase('ask')}>
+            Add again
           </Button>
         </div>
       )}

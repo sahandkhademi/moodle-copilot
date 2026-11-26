@@ -5,6 +5,7 @@ import { getData } from '../data';
 import { getSettings, type Settings } from '../settings';
 import { getItem, KEYS, watchItem, type FocusRequest } from '../storage';
 import { activityKey } from './match';
+import { prewarmViaBackground } from './bridge';
 import type { Deadline } from '../types';
 
 const MARK = 'data-copilot';
@@ -14,7 +15,7 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'copilot-styles';
   // Only what Moodle's own CSS doesn't have.
-  style.textContent = `@keyframes copilot-spin{to{transform:rotate(360deg)}}.copilot-spin{animation:copilot-spin 1s linear infinite}`;
+  style.textContent = `@keyframes copilot-spin{to{transform:rotate(360deg)}}.copilot-spin{animation:copilot-spin 1s linear infinite}@keyframes copilot-pulse{50%{opacity:.45}}.copilot-pulse{animation:copilot-pulse 1s ease-in-out infinite}`;
   document.head.appendChild(style);
 }
 
@@ -60,6 +61,7 @@ export async function shouldMount(settings: Settings): Promise<boolean> {
 
 export async function mountCopilot(): Promise<() => void> {
   injectStyles();
+  prewarmViaBackground(); // open the Zapier connection now, so the first click is fast
   let settings = await getSettings();
   const roots: Root[] = [];
   const main = document.querySelector('#region-main') ?? document.body;

@@ -101,9 +101,16 @@ log('in-Moodle briefing:', JSON.stringify((await moodle.locator('[data-copilot="
 log('in-Moodle grades rows:', await moodle.locator('[data-copilot="grades"] [id^="copilot-course-"]').count());
 log('timeline Google buttons:', await moodle.locator('[data-copilot="item"] button').count(), '(expect 2)');
 log('sync-all button:', JSON.stringify(await moodle.locator('[data-copilot="sync-all"]').innerText().catch(() => 'MISSING')));
+const tClick = Date.now();
 await moodle.locator('[data-copilot="item"] button').first().click();
-await moodle.waitForTimeout(2500);
+await moodle.locator('[data-copilot="item"] button[title*="Google"]:not([title^="Add"])').first().waitFor({ timeout: 5000 }).catch(() => {});
+log('tick visible after click:', Date.now() - tClick, 'ms');
+await moodle.waitForTimeout(1500);
 log('after click, synced ids:', JSON.stringify(await sw.evaluate(async () => Object.keys((await chrome.storage.local.get('google.synced'))['google.synced'] ?? {}))));
+await moodle.getByRole('button', { name: 'Undo' }).first().click();
+await moodle.waitForTimeout(1500);
+log('after Undo, synced ids:', JSON.stringify(await sw.evaluate(async () => Object.keys((await chrome.storage.local.get('google.synced'))['google.synced'] ?? {}))), '(expect [])');
+log('add icon back:', await moodle.locator('[data-copilot="item"] button[title^="Add to Google"]').count(), '(expect 2)');
 await moodle.screenshot({ path: `${OUT}/9-in-moodle.png`, fullPage: true });
 await sw.evaluate(() => chrome.storage.local.set({ settings: { mockMode: true, showInMoodle: false } }));
 await moodle.waitForTimeout(800);

@@ -51,10 +51,15 @@ node scripts/e2e-extension.mjs             # loads the built extension in real C
 
 Google Calendar and Google Tasks are reached through a Zapier MCP server, so there is no Google OAuth screen.
 
-1. Go to [mcp.zapier.com](https://mcp.zapier.com) and create a new MCP server (client: "Other" / "Anthropic API").
-2. Add these three actions: **Google Calendar: Create Detailed Event**, **Google Calendar: Find Event(s)**, **Google Tasks: Create Task**.
+1. Go to [mcp.zapier.com](https://mcp.zapier.com) and create a new MCP server (client: "Other").
+2. Add these actions:
+   - **Google Calendar: Create Detailed Event** and **Google Tasks: Create Task** (adding)
+   - **Google Calendar: Delete Event** and **Google Tasks: Delete Task** (for **Undo**; if Delete Task isn't offered, **Update Task** works too — the task is marked done)
+   - optional: **Google Calendar: Find Event(s)** (only used by the Gemini fallback)
 3. When asked, connect your Google account for each action.
 4. Copy the server URL (and the token, if one is shown separately).
-5. In the extension: Settings, turn **Mock mode** off, paste the URL into "Zapier MCP server URL" (token optional), press "Verbindung testen". You should see the tool names.
+5. In the extension: Settings, turn **Demo data** off, paste the URL into "Zapier MCP server URL" (token optional), press "Test connection". You should see the tool names.
+
+Adding is instant in the UI (the tick shows right away while Zapier works in the background) and every added item can be undone at any time.
 
 Every created event or task counts against the Zapier free-plan task quota. Rehearse with Mock mode on; switch it off for the real run.

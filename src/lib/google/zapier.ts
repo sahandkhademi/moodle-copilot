@@ -3,11 +3,12 @@
 // onto Zapier's instruction-style tool params. Never throws out of runLiveSync / testZapier.
 import type { Content, GoogleGenAI, Part } from '@google/genai';
 import { relevantTools, toFunctionDeclarations } from './mcpTools';
-import { directSync } from './direct';
+import { directSync, directUndo } from './direct';
+import type { McpToolInfo } from './mcpTools';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import type { SyncItem, SyncOutcome, SyncResult } from './sync';
+import type { SyncedEntry, SyncItem, SyncOutcome, SyncResult, UndoResult } from './sync';
 import { getGemini, withModelFallback } from '../ai/client';
 import { getSettings } from '../settings';
 
@@ -274,6 +275,61 @@ export async function runToolLoop(ai: GoogleGenAI, mcp: Client, model: string, p
   throw new Error('Gemini did not finish within the round limit');
 }
 
+// ---- One warm Zapier session, reused across clicks (lives in the background service worker) ----
+interface Session {
+  key: string;
+  client: Client;
+  tools: McpToolInfo[];
+  at: number;
+}
+let session: Promise<Session> | null = null;
+const SESSION_TTL = 10 * 60_000;
+
+async function openSession(url: string, token?: string): Promise<Session> {
+  const client = await withDeadline(connectMcp({ url, token }), 15_000, 'Connecting to Zapier');
+  const { tools } = await withDeadline(client.listTools(), 15_000, 'Listing Zapier tools');
+  return { key: `${url}|${token ?? ''}`, client, tools, at: Date.now() };
+}
+
+/** Cached connection + tool list. `fresh` forces a reconnect (after an error). */
+export async function getZapierSession(fresh = false): Promise<Session> {
+  const settings = await getSettings();
+  if (!settings.zapierMcpUrl) throw new Error('No Zapier URL in Settings.');
+  const key = `${settings.zapierMcpUrl}|${settings.zapierMcpToken ?? ''}`;
+  if (session && !fresh) {
+    const s = await session.catch(() => null);
+    if (s && s.key === key && Date.now() - s.at < SESSION_TTL) return s;
+    s?.client.close().catch(() => {});
+  }
+  session = openSession(settings.zapierMcpUrl, settings.zapierMcpToken || undefined);
+  session.catch(() => (session = null));
+  return session;
+}
+
+export async function prewarmZapier(): Promise<void> {
+  await getZapierSession();
+}
+
+/** Runs `fn` on the warm session; if it fails on a stale connection, reconnects once and retries. */
+async function withSession<T>(fn: (s: Session) => Promise<T>): Promise<T> {
+  try {
+    return await fn(await getZapierSession());
+  } catch (e) {
+    if (e instanceof Error && /No Zapier URL/.test(e.message)) throw e;
+    return fn(await getZapierSession(true));
+  }
+}
+
+/** Deletes what we created (by id, or by title + day when Zapier gave no id). */
+export async function runLiveUndo(entries: { deadlineId: string; entry: SyncedEntry }[]): Promise<UndoResult[]> {
+  if (!entries.length) return [];
+  try {
+    return await withSession((s) => directUndo(s.client, s.tools, entries));
+  } catch (e) {
+    return entries.map((x) => ({ deadlineId: x.deadlineId, ok: false, error: friendlyError(e) }));
+  }
+}
+
 /** `work` holds only items that need writing; flags say which channel to write for each. */
 export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   if (!work.length) return [];
@@ -281,12 +337,14 @@ export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
   if (!settings.zapierMcpUrl) return allFailed(work, 'No Zapier URL in Settings.');
   let mcp: Client | undefined;
   try {
-    const ai = await getGemini();
-    mcp = await withDeadline(connectMcp({ url: settings.zapierMcpUrl, token: settings.zapierMcpToken || undefined }), 15_000, 'Connecting to Zapier');
-    // Fast path: call Zapier's Calendar/Tasks tools directly, in parallel. Only if they're missing, let Gemini figure it out.
-    const { tools } = await withDeadline(mcp.listTools(), 15_000, 'Listing Zapier tools');
-    const direct = await directSync(mcp, tools, work);
+    // Fast path: warm session + Zapier's Calendar/Tasks tools called directly, in parallel.
+    const direct = await withSession((s) => {
+      mcp = s.client;
+      return directSync(s.client, s.tools, work);
+    });
     if (direct) return direct;
+    // Only if those tools are missing: let Gemini figure out the server's tools.
+    const ai = await getGemini();
     const text = await withModelFallback((model) => withDeadline(runToolLoop(ai, mcp!, model, buildSyncPrompt(toPromptItems(work))), 90_000, 'Gemini'));
     const arr = parseJsonArray(text);
     if (!arr) return allFailed(work, `Unexpected reply from Gemini. ${text.slice(0, 120)}`.trim());
@@ -312,8 +370,6 @@ export async function runLiveSync(work: Work[]): Promise<SyncResult[]> {
     });
   } catch (e) {
     return allFailed(work, friendlyError(e));
-  } finally {
-    await mcp?.close().catch(() => {});
   }
 }
 

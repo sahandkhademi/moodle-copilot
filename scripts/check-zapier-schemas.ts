@@ -42,6 +42,8 @@ function makeServer() {
       { name: 'google_calendar_create_detailed_event', description: 'Create a detailed event in Google Calendar', inputSchema: loopy },
       { name: 'google_calendar_find_events', description: 'Find events in Google Calendar', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, search_term: { type: 'string' } }, required: ['instructions'] } },
       { name: 'google_tasks_create_task', description: 'Create a task in Google Tasks', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, title: { type: 'string' }, due: { type: 'string' }, notes: { type: 'string' } }, required: ['instructions'] } },
+      { name: 'google_calendar_delete_event', description: 'Delete an event', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, calendarid: { type: 'string' }, eventid: { type: 'string' } }, required: ['instructions'] } },
+      { name: 'google_tasks_delete_task', description: 'Delete a task', inputSchema: { type: 'object', properties: { instructions: { type: 'string' }, task_id: { type: 'string' } }, required: ['instructions'] } },
       { name: 'slack_send_message', description: 'Send a Slack message', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } },
     ],
   }));
@@ -49,7 +51,8 @@ function makeServer() {
     created.push({ tool: req.params.name, args: req.params.arguments });
     await new Promise((r) => setTimeout(r, 1500)); // a real Zapier action takes a moment
     const found = req.params.name.includes('find');
-    return { content: [{ type: 'text', text: found ? JSON.stringify({ results: [] }) : JSON.stringify({ id: 'x' + created.length, status: 'created' }) }] };
+    const kind = req.params.name.includes('calendar') ? 'ev' : 'task';
+    return { content: [{ type: 'text', text: found ? JSON.stringify({ results: [] }) : JSON.stringify({ results: [{ id: `${kind}${created.length}abc`, status: 'confirmed' }] }) }] };
   });
   return server;
 }
@@ -87,6 +90,20 @@ const url = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}
   const q3 = created.filter((c) => String(c.tool).includes('calendar_create')).map((c) => (c as { args: Record<string, unknown> }).args).find((a) => String(a.summary).includes('Quiz 3'))!;
   assert.equal(q3.start__dateTime, '2026-12-02T17:00:00'); // daytime deadline: block starts when it is due
   assert.equal(q3.end__dateTime, '2026-12-02T17:30:00');
+  assert.ok(res?.every((r) => /^ev\d+abc$/.test(r.calendarEventId ?? '') && /^task\d+abc$/.test(r.taskId ?? '')), 'ids captured');
+  console.log('ids captured:', res?.map((r) => `${r.calendarEventId}/${r.taskId}`).join(' '));
+
+  // Undo: deletes exactly those ids, in parallel.
+  const { directUndo } = await import('../src/lib/google/direct');
+  created.length = 0;
+  const t2 = Date.now();
+  const undone = await directUndo(mcp, tools, res!.map((r) => ({ deadlineId: r.deadlineId, entry: { calendar: true, tasks: true, calendarEventId: r.calendarEventId, taskId: r.taskId, eventTitle: 'x', taskTitle: 'y', day: '2026-11-30' } })));
+  console.log(`undo: ${undone.filter((u) => u.ok).length}/${undone.length} ok in ${Date.now() - t2} ms`);
+  const del = created.find((c) => String(c.tool).includes('calendar_delete')) as { args: Record<string, unknown> };
+  assert.equal(undone.every((u) => u.ok), true);
+  assert.match(String(del.args.eventid), /^ev\d+abc$/);
+  assert.equal(del.args.calendarid, 'primary');
+  assert.match(String((created.find((c) => String(c.tool).includes('tasks_delete')) as { args: Record<string, unknown> }).args.task_id), /^task\d+abc$/);
   console.log('direct path check passed ✓');
   await mcp.close();
 }
